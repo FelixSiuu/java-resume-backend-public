@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Resume</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: "Helvetica Neue", "Microsoft YaHei", "PingFang SC", sans-serif;
+            background: #f4f6f9;
+            color: #1e293b;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 16px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+            padding: 48px 56px;
+        }
+
+        .header {
+            width: 100%;
+            display: table;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 24px;
+            margin-bottom: 28px;
+        }
+
+        .header-left {
+            display: table-cell;
+        }
+
+        .header-left h1 {
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+        }
+
+        .header-left .badge {
+            display: inline-block;
+            background: #0ea5e9;
+            color: #fff;
+            font-size: 13px;
+            font-weight: 500;
+            padding: 2px 12px;
+            border-radius: 20px;
+            margin-top: 6px;
+        }
+
+        .header-right {
+            display: table-cell;
+            text-align: right;
+            font-size: 14px;
+            color: #475569;
+            line-height: 1.8;
+        }
+
+        .header-right a {
+            font-size: 14px;
+            color: #475569;
+            text-decoration: none;
+        }
+
+        .section {
+            margin-top: 32px;
+        }
+
+        .section-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #0ea5e9;
+            border-left: 4px solid #0ea5e9;
+            padding-left: 12px;
+            margin-bottom: 16px;
+        }
+
+        /* ===== 關於我 ===== */
+        .about-text {
+            font-size: 15px;
+            line-height: 1.8;
+            color: #334155;
+            background: #f8fafc;
+            padding: 16px 20px;
+            border-radius: 8px;
+        }
+
+        /* ===== 技能標籤 ===== */
+        .skills-grid {
+            display: flex;
+            flex-wrap: wrap;
+        }
+
+        .skill-item {
+            background: #f1f5f9;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            border: 1px solid #e2e8f0;
+            margin: 6px;
+        }
+
+        .skill-item .summary {
+            font-weight: 600;
+        }
+
+        .skill-item .details {
+            color: #64748b;
+            font-size: 13px;
+        }
+
+        /* ===== 工作經驗  教育 ===== */
+        .exp-item {
+            display: table;
+            width: 100%;
+            padding: 16px 0;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .exp-item:last-child {
+            border-bottom: none;
+        }
+
+        .exp-date {
+            display: table-cell;
+            width: 170px;
+            font-weight: 600;
+            color: #0ea5e9;
+            font-size: 14px;
+            padding-right: 20px;
+            vertical-align: top;
+        }
+
+        .exp-content {
+            display: table-cell;
+            vertical-align: top;
+        }
+
+        .exp-title {
+            font-weight: 600;
+            font-size: 16px;
+        }
+
+        .exp-company {
+            color: #475569;
+            font-size: 14px;
+            margin: 2px 0 6px;
+        }
+
+        .exp-location {
+            color: #94a3b8;
+            font-size: 13px;
+        }
+
+        .exp-responsibilities {
+            margin-top: 8px;
+            padding-left: 18px;
+            list-style: disc;
+            color: #475569;
+            font-size: 14px;
+            line-height: 1.7;
+        }
+
+        /* ===== 社交連結 ===== */
+        .social-links {
+            display: table;
+            width: 100%;
+            margin-top: 8px;
+        }
+
+        .social-links > div {
+            display: table-row;
+        }
+
+        .social-links .platform {
+            display: table-cell;
+            font-weight: 600;
+            color: #0ea5e9;
+            padding: 4px 16px 4px 0;
+            min-width: 80px;
+            text-transform: capitalize;
+        }
+
+        .social-links a {
+            display: table-cell;
+            color: #1e293b;
+            text-decoration: none;
+            word-break: break-all;
+            padding: 4px 0;
+        }
+
+        .social-links a:hover {
+            color: #0ea5e9;
+            text-decoration: underline;
+        }
+
+        /* ===== 底部 ===== */
+        .footer {
+            text-align: center;
+            margin-top: 32px;
+            padding-top: 20px;
+            border-top: 1px solid #e2e8f0;
+            font-size: 13px;
+            color: #94a3b8;
+        }
+
+        /* ===== 列印/PDF 隱藏 ===== */
+        @media print {
+            .no-print {
+                display: none !important;
+            }
+
+            body {
+                background: #fff;
+                padding: 0;
+            }
+
+            .container {
+                box-shadow: none;
+                padding: 20px;
+                border-radius: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <div class="header-left">
+            <!-- 顯示名稱 -->
+            <h1 th:if="${publicMap != null and publicMap.displayName}"
+                th:text="${contact.displayName} ? ${contact.displayName} : 'Display Name'"></h1>
+            <span class="badge" th:if="${publicMap != null and publicMap.title}"
+                  th:text="${contact.title} ? ${contact.title} : 'Title'"></span>
+        </div>
+        <div class="header-right">
+            <div>Email: <span th:if="${publicMap != null and publicMap.email}" th:text="${contact.email}"></span></div>
+            <div>Phone: <span th:if="${publicMap != null and publicMap.phone}" th:text="${contact.phone}"></span></div>
+            <div>Location: <span th:if="${publicMap != null and publicMap.address}" th:text="${contact.address}"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 關於我 ========== -->
+    <div class="section">
+        <div class="section-title">About Me</div>
+        <div class="about-text">
+            <p th:each="about : ${aboutList}" th:text="${about.paragraph}"></p>
+        </div>
+    </div>
+
+    <!-- ========== 技能 ========== -->
+    <div class="section">
+        <div class="section-title">Core Skills</div>
+        <div class="skills-grid">
+            <div class="skill-item" th:each="skill : ${skillsList}">
+                <span class="summary" th:text="${skill.summary}"></span>
+                <span class="details" th:text="${skill.details}"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 工作經驗 ========== -->
+    <div class="section">
+        <div class="section-title">Working Experience</div>
+        <div class="exp-item" th:each="exp : ${expList}">
+            <div class="exp-date"
+                 th:text="${exp.startDate + ' - ' + (exp.endDate != null ? exp.endDate : 'Present')}">
+            </div>
+            <div class="exp-content">
+                <div class="exp-title" th:text="${exp.jobTitle}"></div>
+                <div class="exp-company" th:text="${exp.company}"></div>
+                <div class="exp-location" th:text="${exp.location}"></div>
+                <ul class="exp-responsibilities">
+                    <li th:each="resp : ${exp.keyResponsibilities}">
+                        <h3 th:if="${resp.title != null}" th:text="${resp.title}"></h3>
+                        <p th:text="${resp.responsibility}"></p>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 教育 ========== -->
+    <div class="section">
+        <div class="section-title">Education</div>
+        <div class="exp-item" th:each="edu : ${eduList}">
+            <div class="exp-date"
+                 th:text="${edu.startDate + ' - ' + (edu.endDate != null ? edu.endDate : 'Present')}">
+            </div>
+            <div class="exp-content">
+                <div class="exp-title" th:text="${edu.major}"></div>
+                <div class="exp-company" th:text="${edu.institution}"></div>
+                <div class="exp-location" th:text="${edu.location}"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 社交連結 ========== -->
+    <div class="section" th:if="${socialLinks != null and !#maps.isEmpty(socialLinks)}">
+        <div class="section-title">Social Links</div>
+        <div class="social-links">
+            <div th:each="entry : ${socialLinks}">
+                <div th:if="${publicMap != null and publicMap.get(entry.key) != false}">
+                    <span class="platform" th:text="${entry.key}"></span>
+                    <a th:href="${entry.value}"
+                       th:text="${entry.value}"
+                       target="_blank">
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 底部 ========== -->
+    <div class="footer">
+        © 2026 <span th:if="${publicMap != null and publicMap.displayName}"
+                     th:text="${contact.displayName} ? ${contact.displayName} : 'Display Name'"></span>
+    </div>
+</div>
+</body>
+</html>

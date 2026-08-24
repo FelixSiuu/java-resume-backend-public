@@ -1,0 +1,17 @@
+package com.felixsiu.resume.model.entity;
+
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
+import lombok.Data;
+
+@TableName("key_responsibilities")
+@Data
+public class KeyResponsibilities {
+		@TableId(type = IdType.AUTO)
+		private Integer id;
+		private String userId;
+		private Integer workingId;
+		private String responsibility;
+		private String title;
+}

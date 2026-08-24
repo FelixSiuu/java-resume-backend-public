@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  # ===== Redis =====
+  redis:
+    image: redis:7.0-alpine
+    container_name: redis-local
+    ports:
+      - "6379:6379"
+    environment:
+      - REDIS_PASSWORD=myredis123
+    command: redis-server --requirepass myredis123
+    volumes:
+      - ./data/redis:/data
+    restart: unless-stopped
+    networks:
+      - backend-network
+  # ===== MySQL =====
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-local
+    ports:
+      - "3306:3306"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --skip-character-set-client-handshake
+      - --init-connect=SET NAMES utf8mb4
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}   # 啟動時自動創建此數據庫
+      - MYSQL_LOWER_CASE_TABLE_NAMES=2
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    restart: unless-stopped
+    networks:
+      - backend-network
+
+# ===== 網絡配置 =====
+networks:
+  backend-network:
+    driver: bridge

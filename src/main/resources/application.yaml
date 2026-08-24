@@ -1,0 +1,5 @@
+spring:
+  profiles:
+    active: dev #  本地開發時寫 dev。上線時只要在雲端執行：java -jar xxx.jar --spring.profiles.active=prod
+  config:
+    import: optional:file:.env[.properties]

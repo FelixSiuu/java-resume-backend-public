@@ -1,0 +1,52 @@
+HELP.md
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea/
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+*.sql
+*.dump
+
+# 阻擋 Spring Boot 或本地運行產生的臨時日誌檔與資料夾
+*.log
+logs/
+/logs/
+
+# 本地環境變數私密檔案
+.env
+.env.local
+
+!src/main/resources/db/migration/*.sql
+
+# Docker 相關
+/data/mysql/
+/data/redis/
+/data/
