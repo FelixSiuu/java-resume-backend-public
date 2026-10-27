@@ -36,7 +36,7 @@ class SkillServiceTest {
 		@InjectMocks
 		private SkillService skillService;
 		
-		private final String userId = "0a6b605e358a13e36cc3138213d64690";
+		private final String userId = "test-user-123";
 		
 		// ========== 測試數據工廠 ==========
 		private CoreSkills createSkill(Integer id, String summary, String details) {

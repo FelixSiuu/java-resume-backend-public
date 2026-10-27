@@ -17,7 +17,7 @@ public class SwaggerConfig {
 								new Info()
 												.title("Resume API")
 												.version("1.0.0")
-												.description("個人履歷後端 API 文件")
+												.description("個人網站 API doc")
 												.contact(new Contact()
 																.name("Felix Siu")
 																.email("b1044327634@gmail.com"))

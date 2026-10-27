@@ -10,7 +10,7 @@
     </parent>
     <groupId>com.felixsiu</groupId>
     <artifactId>resume</artifactId>
-    <version>1.5.0</version>
+    <version>1.7.1</version>
     <name>resume</name>
     <description>resume</description>
     <url/>

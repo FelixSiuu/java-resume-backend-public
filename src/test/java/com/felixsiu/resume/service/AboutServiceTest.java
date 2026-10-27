@@ -33,7 +33,7 @@ class AboutServiceTest {
 		@InjectMocks
 		private AboutService aboutService;
 		
-		private String userId = "0a6b605e358a13e36cc3138213d64690";
+		private String userId = "test-user-123";
 		
 		@Test
 		void getAboutMe_shouldReturnAboutList_whenUserExists() {

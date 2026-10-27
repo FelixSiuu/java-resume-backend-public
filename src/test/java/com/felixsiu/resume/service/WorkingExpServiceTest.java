@@ -14,6 +14,7 @@ import com.felixsiu.resume.utils.CacheKeys;
 import com.felixsiu.resume.utils.MyRedisTemplate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -183,7 +184,11 @@ class WorkingExpServiceTest {
 				);
 				
 				// 模擬插入主表成功
-				when(workingExperienceMapper.insert(any(WorkingExperience.class))).thenReturn(1);
+				when(workingExperienceMapper.insert(any(WorkingExperience.class))).thenAnswer(invocation -> {
+						WorkingExperience we = invocation.getArgument(0);
+						we.setId(1);   // 模拟数据库回填 ID
+						return 1;
+				});
 				
 				// 模擬批量插入副表成功
 				when(keyResponsibilitiesMapper.insert(any(KeyResponsibilities.class))).thenReturn(2);
@@ -195,7 +200,15 @@ class WorkingExpServiceTest {
 				assertThat(result.getIsSuccess()).isTrue();
 				
 				verify(workingExperienceMapper, times(1)).insert(any(WorkingExperience.class));
-				verify(keyResponsibilitiesMapper, times(2)).insert(any(KeyResponsibilities.class));
+				
+				ArgumentCaptor<KeyResponsibilities> captor =
+								ArgumentCaptor.forClass(KeyResponsibilities.class);
+				verify(keyResponsibilitiesMapper, times(2)).insert(captor.capture());
+				for (KeyResponsibilities captured : captor.getAllValues()) {
+						System.out.println("workingId = " + captured.getWorkingId());
+						assertThat(captured.getWorkingId()).isEqualTo(1);
+				}
+				
 				verify(myRedisTemplate, times(1)).delete(CacheKeys.experience(userId));
 		}
 		

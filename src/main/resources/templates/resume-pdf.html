@@ -38,6 +38,13 @@
             display: table-cell;
         }
 
+        .header-left .avatar {
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            margin-bottom: 8px;
+        }
+
         .header-left h1 {
             font-size: 32px;
             font-weight: 700;
@@ -234,6 +241,11 @@
 <div class="container">
     <div class="header">
         <div class="header-left">
+            <!-- 頭像 -->
+            <img th:if="${avatarDataUrl != null}"
+                 th:src="${avatarDataUrl}"
+                 alt="avatar"
+                 class="avatar"/>
             <!-- 顯示名稱 -->
             <h1 th:if="${publicMap != null and publicMap.displayName}"
                 th:text="${contact.displayName} ? ${contact.displayName} : 'Display Name'"></h1>

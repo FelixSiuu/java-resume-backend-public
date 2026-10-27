@@ -24,6 +24,10 @@ public class CacheKeys {
 				return PREFIX + "contact:" + userId;
 		}
 		
+		public static String projects(String userId){
+				return PREFIX + "projects:" + userId;
+		}
+		
 		/**
 		 * 批量删除某个用户的所有缓存
 		 */
@@ -33,7 +37,8 @@ public class CacheKeys {
 								education(userId),
 								skills(userId),
 								experience(userId),
-								contact(userId)
+								contact(userId),
+								projects(userId)
 				};
 		}
 }

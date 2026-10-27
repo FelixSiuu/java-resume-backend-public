@@ -35,6 +35,10 @@ spring:
     baseline-version: 1
     clean-disabled: true
     connect-retries: 3
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 2MB
 logging:
   level:
     root: INFO

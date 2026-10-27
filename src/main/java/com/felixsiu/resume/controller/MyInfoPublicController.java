@@ -1,22 +1,25 @@
 package com.felixsiu.resume.controller;
 
 import com.felixsiu.resume.model.entity.About;
+import com.felixsiu.resume.model.entity.Avatar;
 import com.felixsiu.resume.model.entity.CoreSkills;
 import com.felixsiu.resume.model.entity.Education;
-import com.felixsiu.resume.model.vo.BaseVo;
-import com.felixsiu.resume.model.vo.ContactVo;
-import com.felixsiu.resume.model.vo.WorkingExperienceVo;
+import com.felixsiu.resume.model.vo.*;
 import com.felixsiu.resume.service.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.*;
 
+import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * 公開的個人資料接口
@@ -37,6 +40,12 @@ public class MyInfoPublicController {
 		ContactService contactService;
 		@Autowired
 		UserService userService;
+		@Autowired
+		AvatarService avatarService;
+		@Autowired
+		ResumeService resumeService;
+		@Autowired
+		ProjectService projectService;
 		
 		/**
 		 * 關於我
@@ -103,4 +112,83 @@ public class MyInfoPublicController {
 				return contactService.getContact(userId);
 		}
 		
+		/**
+		 * Avatar 頭像
+		 */
+		@GetMapping("/{username}/avatar")
+		@Operation(summary = "透過用戶名獲取頭像")
+		public ResponseEntity<byte[]> avatar(
+						@Parameter(description = "username 用戶名")
+						@PathVariable String username
+		) {
+				String userId = userService.getUserId(username);
+				Optional<Avatar> avatarOpt = avatarService.getAvatar(userId);
+				
+				if (avatarOpt.isPresent()) {
+						return ResponseEntity.ok()
+										.contentType(MediaType.parseMediaType(avatarOpt.get().getContentType()))
+										.header(HttpHeaders.CACHE_CONTROL, "max-age=86400")
+										.body(avatarOpt.get().getImageData());
+				}
+				
+				return ResponseEntity.notFound().build();
+		}
+		
+		/**
+		 * 履歷預覽
+		 */
+		@GetMapping("/{username}/resume")
+		@Operation(summary = "透過用戶名獲取履歷")
+		public String resume(
+						Model model,
+						@Parameter(description = "username 用戶名")
+						@PathVariable String username
+		) {
+				String userId = userService.getUserId(username);
+				return resumeService.getResume(model, userId);
+		}
+		
+		/**
+		 * 履歷導出
+		 */
+		@GetMapping("/{username}/resume/export")
+		@Operation(summary = "透過用戶名導出履歷")
+		public ResponseEntity<InputStreamResource> exportPdf(
+						@Parameter(description = "username 用戶名")
+						@PathVariable String username
+		) throws IOException {
+				String userId = userService.getUserId(username);
+				return resumeService.exportPdf(userId);
+		}
+		
+		/**
+		 * 項目列表
+		 */
+		@GetMapping("/{username}/projects")
+		@Operation(summary = "透過用戶名獲取項目列表")
+		public BaseVo<List<ProjectVo>> projects(
+						@Parameter(description = "username 用戶名")
+						@PathVariable String username,
+						@Parameter(description = "是否只顯示突出項目")
+						@RequestParam(required = false, defaultValue = "false")
+						Boolean featured
+		) {
+				String userId = userService.getUserId(username);
+				return projectService.getProjects(userId, featured);
+		}
+		
+		/**
+		 * 項目細節
+		 */
+		@GetMapping("/{username}/projects/{slug}")
+		@Operation(summary = "透過用戶名與slug獲取項目細節")
+		public BaseVo<ProjectDetailVo> projectDetail(
+						@Parameter(description = "username 用戶名")
+						@PathVariable String username,
+						@Parameter(description = "項目 slug")
+						@PathVariable String slug
+		) {
+				String userId = userService.getUserId(username);
+				return projectService.getProjectDetail(userId, slug);
+		}
 }
