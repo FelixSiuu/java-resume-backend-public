@@ -20,7 +20,9 @@ public class ProjectBaseService extends ServiceImpl<ProjectsMapper, Project> {
 		 */
 		public List<Project> selectList(String userId, Boolean featured) {
 				LambdaQueryWrapper<Project> wrapper = new LambdaQueryWrapper<>();
-				wrapper.eq(Project::getUserId, userId);
+				wrapper
+								.eq(Project::getUserId, userId)
+								.orderByAsc(Project::getSortOrder);
 				
 				if (featured) {
 						wrapper.eq(Project::getFeatured, true);
@@ -41,22 +43,6 @@ public class ProjectBaseService extends ServiceImpl<ProjectsMapper, Project> {
 				wrapper
 								.eq(Project::getUserId, userId)
 								.eq(Project::getSlug, querySlug);
-				
-				return this.getOne(wrapper);
-		}
-		
-		/**
-		 * query one by id
-		 *
-		 * @param userId user id
-		 * @param id     PK id
-		 * @return optional project entity
-		 */
-		public Project selectOneById(String userId, Integer id) {
-				LambdaQueryWrapper<Project> wrapper = new LambdaQueryWrapper<>();
-				wrapper
-								.eq(Project::getId, id)
-								.eq(Project::getUserId, userId);
 				
 				return this.getOne(wrapper);
 		}

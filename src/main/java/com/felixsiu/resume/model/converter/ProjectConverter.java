@@ -9,6 +9,7 @@ import com.felixsiu.resume.model.vo.ProjectDetailVo;
 import com.felixsiu.resume.model.vo.ProjectVo;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -32,13 +33,15 @@ public class ProjectConverter {
 		 * @return stack entity list
 		 */
 		public List<ProjectStack> convertStackEntity(List<ProjectStackDto> dtoList, Integer projectId) {
-				return dtoList.stream().map(dto -> {
+				List<ProjectStack> projectStacks = new ArrayList<>();
+				for (int i = 0; i < dtoList.size(); i++) {
 						ProjectStack stackEntity = new ProjectStack();
 						stackEntity.setProjectId(projectId);
-						stackEntity.setStackName(dto.stackName());
-						stackEntity.setSortOrder(dto.sortOrder());
-						return stackEntity;
-				}).collect(Collectors.toList());
+						stackEntity.setSortOrder(i);
+						stackEntity.setStackName(dtoList.get(i).stackName());
+						projectStacks.add(stackEntity);
+				}
+				return projectStacks;
 		}
 		
 		/**
@@ -50,7 +53,6 @@ public class ProjectConverter {
 		 */
 		public ProjectVo convertProjectVo(Project projectEntity, List<String> projectStackVoList) {
 				ProjectVo projectVo = new ProjectVo();
-				projectVo.setId(projectEntity.getId());
 				projectVo.setSlug(projectEntity.getSlug());
 				projectVo.setSortOrder(projectEntity.getSortOrder());
 				projectVo.setName(projectEntity.getName());

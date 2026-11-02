@@ -42,7 +42,7 @@ public class GlobalExceptionHandler {
 		@ExceptionHandler(DuplicateKeyException.class)
 		public BaseVo<Void> handleDuplicateKeyException(DuplicateKeyException e) {
 				System.err.println("【資料庫唯一鍵衝突】: " + e.getMessage());
-				return BaseVo.fail(null, "請勿重複添加");
+				return BaseVo.fail(null, "操作失敗：該數據已存在，請更換後重試");
 		}
 		
 		/**

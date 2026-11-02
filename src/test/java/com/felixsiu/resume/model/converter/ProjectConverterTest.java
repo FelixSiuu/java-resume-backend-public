@@ -79,6 +79,25 @@ class ProjectConverterTest {
 		}
 		
 		@Test
+		void convertStackEntity_shouldMapAllFieldsCorrectly(){
+				List<ProjectStackDto> dtoList = List.of(
+								new ProjectStackDto("stack 1"),
+								new ProjectStackDto("stack 2"),
+								new ProjectStackDto("stack 3")
+				);
+				
+				List<ProjectStack> projectStacks  = converter.convertStackEntity(dtoList, 1);
+				
+				assertThat(projectStacks).hasSize(3);
+				assertThat(projectStacks.get(0).getStackName()).isEqualTo("stack 1");
+				assertThat(projectStacks.get(0).getSortOrder()).isEqualTo(0);
+				assertThat(projectStacks.get(1).getStackName()).isEqualTo("stack 2");
+				assertThat(projectStacks.get(1).getSortOrder()).isEqualTo(1);
+				assertThat(projectStacks.get(2).getStackName()).isEqualTo("stack 3");
+				assertThat(projectStacks.get(2).getSortOrder()).isEqualTo(2);
+		}
+		
+		@Test
 		void convertProjectEntity_shouldMapAllFieldsCorrectly() {
 				// given
 				String userId = "user-1";
@@ -108,7 +127,6 @@ class ProjectConverterTest {
 				
 				ProjectVo projectVo = converter.convertProjectVo(project, projectStackVoList);
 				
-				assertThat(projectVo.getId()).isEqualTo(1);
 				assertThat(projectVo.getSlug()).isEqualTo("slug-1");
 				assertThat(projectVo.getSortOrder()).isEqualTo(10);
 				assertThat(projectVo.getName()).isEqualTo("name");
@@ -123,7 +141,7 @@ class ProjectConverterTest {
 				Integer projectId = 1;
 				ProjectDto projectDto = new ProjectDto(
 								"slug-2", "name 2", "value 2", "summary 1", true,
-								List.of(new ProjectStackDto("stack 2", 0)),
+								List.of(new ProjectStackDto("stack 2")),
 								"role 2", "duration 2", "challenge 2", "solution 2", "impact 2", "https://www", "https://www"
 				);
 				

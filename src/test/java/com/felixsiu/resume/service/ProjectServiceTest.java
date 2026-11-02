@@ -2,6 +2,7 @@ package com.felixsiu.resume.service;
 
 import com.felixsiu.resume.model.converter.ProjectConverter;
 import com.felixsiu.resume.model.dto.ProjectDto;
+import com.felixsiu.resume.model.dto.ProjectSortDto;
 import com.felixsiu.resume.model.dto.ProjectStackDto;
 import com.felixsiu.resume.model.entity.Project;
 import com.felixsiu.resume.model.entity.ProjectDetail;
@@ -20,7 +21,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -52,66 +52,6 @@ class ProjectServiceTest {
 				ReflectionTestUtils.setField(projectService, "projectConverter", projectConverter);
 		}
 		
-		private ProjectStack createEntity(
-						Integer id,
-						Integer projectId,
-						String stackName,
-						Integer sortOrder
-		) {
-				ProjectStack projectStack = new ProjectStack();
-				projectStack.setId(id);
-				projectStack.setProjectId(projectId);
-				projectStack.setStackName(stackName);
-				projectStack.setSortOrder(sortOrder);
-				return projectStack;
-		}
-		
-		private Project createEntity(
-						Integer id,
-						String userId,
-						String slug,
-						Integer sortOrder,
-						String name,
-						String value,
-						String summary,
-						Boolean featured
-		) {
-				Project project = new Project();
-				project.setId(id);
-				project.setUserId(userId);
-				project.setSlug(slug);
-				project.setSortOrder(sortOrder);
-				project.setName(name);
-				project.setValue(value);
-				project.setSummary(summary);
-				project.setFeatured(featured);
-				project.setCreateTime(LocalDateTime.now());
-				project.setUpdateTime(LocalDateTime.now());
-				return project;
-		}
-		
-		private ProjectDetail createEntity(
-						Integer projectId,
-						String role,
-						String duration,
-						String challenge,
-						String solution,
-						String impact,
-						String liveUrl,
-						String repoUrl
-		) {
-				ProjectDetail projectDetail = new ProjectDetail();
-				projectDetail.setProjectId(projectId);
-				projectDetail.setRole(role);
-				projectDetail.setDuration(duration);
-				projectDetail.setChallenge(challenge);
-				projectDetail.setSolution(solution);
-				projectDetail.setImpact(impact);
-				projectDetail.setLiveUrl(liveUrl);
-				projectDetail.setRepoUrl(repoUrl);
-				return projectDetail;
-		}
-		
 		private Project project(Integer id, String slug) {
 				Project project = new Project();
 				project.setId(id);
@@ -127,10 +67,16 @@ class ProjectServiceTest {
 				return projectStack;
 		}
 		
-		private ProjectDto validProjectDto() {
+		private ProjectDto createDto(
+						String slug,
+						String name,
+						String value,
+						String summary,
+						List<ProjectStackDto> stackDtoList
+		) {
 				return new ProjectDto(
-								"slug-1", "name 1", "value 1", "summary 1", true,
-								List.of(new ProjectStackDto("stack 1", 0)),
+								slug, name, value, summary, true,
+								stackDtoList,
 								"role1", null, null, null, null, null, null
 				);
 		}
@@ -200,6 +146,8 @@ class ProjectServiceTest {
 				
 				when(projectBaseService.selectOneBySlug(userId, slug)).thenReturn(p1);
 				
+				when(projectDetailService.selectOne(p1.getId())).thenReturn(null);
+				
 				assertThatThrownBy(() -> projectService.getProjectDetail(userId, slug))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("未找到對應項目詳情");
@@ -232,6 +180,8 @@ class ProjectServiceTest {
 		@Test
 		void addProject_shouldSuccess_whenValidInput() {
 				
+				ProjectDto dto = createDto("slug-1", "name-1", "value-1", "summary-1", List.of(new ProjectStackDto("stack1")));
+				
 				when(projectBaseService.getLastSortOrder(userId)).thenReturn(50);
 				when(projectBaseService.insert(any(Project.class))).thenAnswer(invocation -> {
 						Project p = invocation.getArgument(0);
@@ -241,7 +191,7 @@ class ProjectServiceTest {
 				when(projectStacksService.insertBatch(anyList())).thenReturn(true);
 				when(projectDetailService.insert(any(ProjectDetail.class))).thenReturn(true);
 				
-				BaseVo<Void> result = projectService.addProject(userId, validProjectDto());
+				BaseVo<Void> result = projectService.addProject(userId, dto);
 				
 				// 驗證sortOrder計算
 				ArgumentCaptor<Project> projectCaptor = ArgumentCaptor.forClass(Project.class);
@@ -266,11 +216,7 @@ class ProjectServiceTest {
 		
 		@Test
 		void addProject_shouldThrow_whenSlugIsEmpty() {
-				ProjectDto dto = new ProjectDto(
-								"", "name 1", "value 1", "summary 1", true,
-								List.of(new ProjectStackDto("stack 1", 0)),
-								"role1", null, null, null, null, null, null
-				);
+				ProjectDto dto = createDto(null, "name-1", "value-1", "summary-1", List.of(new ProjectStackDto("stack1")));
 				
 				assertThatThrownBy(() -> projectService.addProject(userId, dto))
 								.isInstanceOf(RuntimeException.class)
@@ -281,11 +227,7 @@ class ProjectServiceTest {
 		
 		@Test
 		void addProject_shouldThrow_whenNameIsMissing() {
-				ProjectDto dto = new ProjectDto(
-								"", null, "value 1", "summary 1", true,
-								List.of(new ProjectStackDto("stack 1", 0)),
-								"role1", null, null, null, null, null, null
-				);
+				ProjectDto dto = createDto("slug-1", null, "value-1", "summary-1", List.of(new ProjectStackDto("stack1")));
 				
 				assertThatThrownBy(() -> projectService.addProject(userId, dto))
 								.isInstanceOf(RuntimeException.class)
@@ -297,9 +239,7 @@ class ProjectServiceTest {
 		@Test
 		void addProject_shouldThrow_whenStackListIsEmpty() {
 				
-				ProjectDto dto = new ProjectDto(
-								"slug-1", "name 1", "value 1", "summary 1", true, List.of(), "role1", null, null, null, null, null, null
-				);
+				ProjectDto dto = createDto("slug-1", "name-1", "value-1", "summary-1", List.of());
 				
 				assertThatThrownBy(() -> projectService.addProject(userId, dto))
 								.isInstanceOf(RuntimeException.class)
@@ -309,7 +249,24 @@ class ProjectServiceTest {
 		}
 		
 		@Test
+		void addProject_shouldThrow_whenSlugIsRepeated() {
+				
+				ProjectDto dto = createDto("repeated-slug", "name-1", "value-1", "summary-1", List.of(new ProjectStackDto("stack1")));
+				
+				when(projectBaseService.selectOneBySlug(userId, dto.slug())).thenReturn(project(1, dto.slug()));
+				
+				assertThatThrownBy(() -> projectService.addProject(userId, dto))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("該 slug 已被使用，請更換一個");
+				
+				verifyNoMoreInteractions(projectBaseService);
+				verifyNoInteractions(projectStacksService, projectDetailService);
+		}
+		
+		@Test
 		void addProject_shouldThrow_whenIdNotBackfilled() {
+				
+				ProjectDto dto = createDto("slug-1", "name-1", "value-1", "summary-1", List.of(new ProjectStackDto("stack1")));
 				
 				// 模擬資料庫插入成功，但沒有回填 ID (ID 依然是 null)
 				when(projectBaseService.insert(any(Project.class))).thenAnswer(invocation -> {
@@ -318,7 +275,7 @@ class ProjectServiceTest {
 						return true;
 				});
 				
-				assertThatThrownBy(() -> projectService.addProject(userId, validProjectDto()))
+				assertThatThrownBy(() -> projectService.addProject(userId, dto))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("添加失敗");
 				
@@ -328,9 +285,11 @@ class ProjectServiceTest {
 		@Test
 		void editProject_shouldThrow_whenProjectNotFound() {
 				
-				when(projectBaseService.selectOneById(userId, 1)).thenReturn(null);
+				ProjectDto dto = createDto("slug-1", "name-1", "value-1", "summary-1", List.of(new ProjectStackDto("stack1")));
 				
-				assertThatThrownBy(() -> projectService.editProject(userId, 1, validProjectDto()))
+				when(projectBaseService.selectOneBySlug(userId, "slug-1")).thenReturn(null);
+				
+				assertThatThrownBy(() -> projectService.editProject(userId, "slug-1", dto))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("找不到對應的項目");
 				
@@ -340,12 +299,30 @@ class ProjectServiceTest {
 		}
 		
 		@Test
-		void editProject_shouldThrow_whenUpdateProjectFailed() {
-				when(projectBaseService.selectOneById(userId, 1)).thenReturn(project(1, "slug-1"));
+		void editProject_shouldThrow_whenNewSlugIsRepeated() {
+				ProjectDto dto = createDto("new-slug", "name-1", "value-1", "summary-1", List.of(new ProjectStackDto("stack1")));
+				String newSlug = dto.slug();
 				
+				when(projectBaseService.selectOneBySlug(userId, "slug")).thenReturn(project(1, "slug"));
+				when(projectBaseService.selectOneBySlug(userId, newSlug)).thenReturn(project(2, newSlug));
+				
+				assertThatThrownBy(() -> projectService.editProject(userId, "slug", dto))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("該 slug 已被使用，請更換一個");
+				
+				verify(projectBaseService, never()).updateByPK(any());
+				verifyNoInteractions(projectDetailService, projectStacksService);
+				
+		}
+		
+		@Test
+		void editProject_shouldThrow_whenUpdateProjectFailed() {
+				ProjectDto dto = createDto("slug-1", "name-1", "value-1", "summary-1", List.of(new ProjectStackDto("stack1")));
+				
+				when(projectBaseService.selectOneBySlug(userId, "slug-1")).thenReturn(project(1, "slug-1"));
 				when(projectBaseService.updateByPK(any())).thenReturn(false);
 				
-				assertThatThrownBy(() -> projectService.editProject(userId, 1, validProjectDto()))
+				assertThatThrownBy(() -> projectService.editProject(userId, "slug-1", dto))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("更新項目失敗");
 				
@@ -354,12 +331,14 @@ class ProjectServiceTest {
 		
 		@Test
 		void editProject_shouldThrow_whenDetailNotFound() {
-				when(projectBaseService.selectOneById(userId, 1)).thenReturn(project(1, "slug-1"));
+				ProjectDto dto = createDto("slug-1", "name-1", "value-1", "summary-1", List.of(new ProjectStackDto("stack1")));
+				
+				when(projectBaseService.selectOneBySlug(userId, "slug-1")).thenReturn(project(1, "slug-1"));
 				when(projectBaseService.updateByPK(any())).thenReturn(true);
 				
 				when(projectDetailService.selectOne(anyInt())).thenReturn(null);
 				
-				assertThatThrownBy(() -> projectService.editProject(userId, 1, validProjectDto()))
+				assertThatThrownBy(() -> projectService.editProject(userId, "slug-1", dto))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("找不到對應的項目細節");
 				
@@ -369,16 +348,18 @@ class ProjectServiceTest {
 		
 		@Test
 		void editProject_shouldThrow_whenDetailUpdateFailed() {
+				ProjectDto dto = createDto("slug-1", "name-1", "value-1", "summary-1", List.of(new ProjectStackDto("stack1")));
+				
 				ProjectDetail projectDetail = new ProjectDetail();
 				projectDetail.setProjectId(1);
 				
-				when(projectBaseService.selectOneById(userId, 1)).thenReturn(project(1, "slug-1"));
+				when(projectBaseService.selectOneBySlug(userId, "slug-1")).thenReturn(project(1, "slug-1"));
 				when(projectBaseService.updateByPK(any())).thenReturn(true);
 				
 				when(projectDetailService.selectOne(anyInt())).thenReturn(projectDetail);
 				when(projectDetailService.updateByPK(any())).thenReturn(false);
 				
-				assertThatThrownBy(() -> projectService.editProject(userId, 1, validProjectDto()))
+				assertThatThrownBy(() -> projectService.editProject(userId, "slug-1", dto))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("更新項目細節失敗");
 				
@@ -387,10 +368,12 @@ class ProjectServiceTest {
 		
 		@Test
 		void editProject_shouldThrow_whenStackRemoveFailed() {
+				ProjectDto dto = createDto("slug-1", "name-1", "value-1", "summary-1", List.of(new ProjectStackDto("stack1")));
+				
 				ProjectDetail projectDetail = new ProjectDetail();
 				projectDetail.setProjectId(1);
 				
-				when(projectBaseService.selectOneById(userId, 1)).thenReturn(project(1, "slug-1"));
+				when(projectBaseService.selectOneBySlug(userId, "slug-1")).thenReturn(project(1, "slug-1"));
 				when(projectBaseService.updateByPK(any())).thenReturn(true);
 				
 				when(projectDetailService.selectOne(anyInt())).thenReturn(projectDetail);
@@ -398,7 +381,7 @@ class ProjectServiceTest {
 				
 				when(projectStacksService.deleteByProjectId(anyInt())).thenReturn(false);
 				
-				assertThatThrownBy(() -> projectService.editProject(userId, 1, validProjectDto()))
+				assertThatThrownBy(() -> projectService.editProject(userId, "slug-1", dto))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("更新項目技術棧失敗");
 				
@@ -407,12 +390,16 @@ class ProjectServiceTest {
 		
 		@Test
 		void editProject_shouldSuccess_whenAllServicesPass() {
+				ProjectDto dto = createDto("new-slug", "new-name", "new-value", "new-summary", List.of(new ProjectStackDto("stack1")));
+				String newSlug = dto.slug();
+				
 				Project existing = new Project();
 				existing.setId(100);
-				existing.setSlug("slug-2");
+				existing.setSlug("slug-1");
 				existing.setSortOrder(50);
 				
-				when(projectBaseService.selectOneById(userId, 100)).thenReturn(existing);
+				when(projectBaseService.selectOneBySlug(userId, "slug-1")).thenReturn(existing);
+				when(projectBaseService.selectOneBySlug(userId, newSlug)).thenReturn(null);
 				when(projectBaseService.updateByPK(any(Project.class))).thenReturn(true);
 				
 				ProjectDetail existingDetail = new ProjectDetail();
@@ -423,30 +410,32 @@ class ProjectServiceTest {
 				when(projectStacksService.deleteByProjectId(100)).thenReturn(true);
 				when(projectStacksService.insertBatch(anyList())).thenReturn(true);
 				
-				BaseVo<Void> result = projectService.editProject(userId, 100, validProjectDto());
+				BaseVo<Void> result = projectService.editProject(userId, "slug-1", dto);
 				
 				ArgumentCaptor<ProjectDetail> detailCaptor = ArgumentCaptor.forClass(ProjectDetail.class);
 				verify(projectDetailService).updateByPK(detailCaptor.capture());
 				assertThat(detailCaptor.getValue().getProjectId()).isEqualTo(100);
-				assertThat(detailCaptor.getValue().getRole()).isEqualTo("role1");
 				
 				assertThat(result.getIsSuccess()).isTrue();
 		}
 		
 		@Test
 		void deleteProject_shouldThrow_whenProjectNotFound() {
-				when(projectBaseService.deleteByPKAndUser(userId, 1)).thenReturn(false);
+				when(projectBaseService.selectOneBySlug(userId, "slug-1")).thenReturn(null);
 				
-				assertThatThrownBy(() -> projectService.deleteProject(userId, 1))
+				assertThatThrownBy(() -> projectService.deleteProject(userId, "slug-1"))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("刪除失敗，資料不存在");
+				
+				verify(projectBaseService, never()).deleteByPKAndUser(any(), any());
 		}
 		
 		@Test
 		void deleteProject_shouldReturnSuccess_whenDeleteSucceeds() {
+				when(projectBaseService.selectOneBySlug(userId, "slug-1")).thenReturn(project(100, "slug-1"));
 				when(projectBaseService.deleteByPKAndUser(userId, 100)).thenReturn(true);
 				
-				BaseVo<Void> result = projectService.deleteProject(userId, 100);
+				BaseVo<Void> result = projectService.deleteProject(userId, "slug-1");
 				
 				assertThat(result.getIsSuccess()).isTrue();
 				assertThat(result.getData()).isNull();
@@ -457,13 +446,147 @@ class ProjectServiceTest {
 		
 		@Test
 		void deleteProject_shouldNotTouchOtherServices_whenDeleteSucceeds() {
+				when(projectBaseService.selectOneBySlug(userId, "slug-1")).thenReturn(project(100, "slug-1"));
 				when(projectBaseService.deleteByPKAndUser(userId, 100)).thenReturn(true);
 				
-				projectService.deleteProject(userId, 100);
+				projectService.deleteProject(userId, "slug-1");
 				
 				// 刪除只委託 base service，不應碰 detail / stacks（依賴 DB CASCADE）
 				verify(projectBaseService).deleteByPKAndUser(userId, 100);
 				verifyNoMoreInteractions(projectBaseService);
 				verifyNoInteractions(projectDetailService, projectStacksService);
 		}
+		
+		@Test
+		void reorderProject_shouldThrow_whenSlugsInValid() {
+				ProjectSortDto dto = new ProjectSortDto(List.of("slug-1", "   "));
+				
+				assertThatThrownBy(() -> projectService.reorderProject(userId, dto))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("參數缺失");
+				
+				verifyNoInteractions(projectBaseService);
+		}
+		
+		@Test
+		void reorderProject_shouldThrow_whenSlugRepeated() {
+				ProjectSortDto dto = new ProjectSortDto(List.of("slug-1", "slug-1"));
+				
+				assertThatThrownBy(() -> projectService.reorderProject(userId, dto))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("傳入的 slug 包含重複項");
+				
+				verifyNoInteractions(projectBaseService);
+		}
+		
+		@Test
+		void reorderProject_shouldThrow_whenUserNoProject() {
+				ProjectSortDto dto = new ProjectSortDto(List.of("slug-1", "slug-2"));
+				
+				when(projectBaseService.selectList(userId, false)).thenReturn(List.of());
+				
+				assertThatThrownBy(() -> projectService.reorderProject(userId, dto))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("暫無項目，請添加項目後重試");
+				
+				verifyNoMoreInteractions(projectBaseService);
+		}
+		
+		@Test
+		void reorderProject_shouldReturnSuccessAndNotUpdate_whenUserHasOnlyOneProject() {
+				ProjectSortDto dto = new ProjectSortDto(List.of("slug-1"));
+				when(projectBaseService.selectList(userId, false))
+								.thenReturn(List.of(project(1, "slug-1")));
+				
+				BaseVo<Void> result = projectService.reorderProject(userId, dto);
+				
+				assertThat(result.getIsSuccess()).isTrue();
+				
+				verify(projectBaseService, never()).updateBatchById(anyList());
+		}
+		
+		@Test
+		void reorderProject_shouldThrow_whenUserProjectSizeNotEqualsToDto() {
+				ProjectSortDto dto = new ProjectSortDto(List.of("slug-1", "slug-2", "slug-3"));
+				List<Project> projectList = List.of(
+								project(1, "slug-1"),
+								project(2, "slug-2")
+				);
+				
+				when(projectBaseService.selectList(userId, false)).thenReturn(projectList);
+				
+				assertThatThrownBy(() -> projectService.reorderProject(userId, dto))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("slug 缺失或多餘，請重新整理後重試");
+				
+				verifyNoMoreInteractions(projectBaseService);
+		}
+		
+		@Test
+		void reorderProject_shouldThrow_whenUserProjectSlugsMisMatchDto() {
+				ProjectSortDto dto = new ProjectSortDto(List.of("slug-1", "slug-2", "slug-3"));
+				List<Project> projectList = List.of(
+								project(1, "slug-1"),
+								project(2, "slug-2"),
+								project(3, "slug-4")
+				);
+				
+				when(projectBaseService.selectList(userId, false)).thenReturn(projectList);
+				
+				assertThatThrownBy(() -> projectService.reorderProject(userId, dto))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("slug 不匹配，包含無效的項目");
+				
+				verifyNoMoreInteractions(projectBaseService);
+		}
+		
+		@Test
+		void reorderProject_shouldThrow_whenUpdateFailed() {
+				ProjectSortDto dto = new ProjectSortDto(List.of("slug-2", "slug-1"));
+				List<Project> projectList = List.of(
+								project(1, "slug-1"),
+								project(2, "slug-2")
+				);
+				
+				when(projectBaseService.selectList(userId, false)).thenReturn(projectList);
+				when(projectBaseService.updateBatchById(anyList())).thenReturn(false);
+				
+				assertThatThrownBy(() -> projectService.reorderProject(userId, dto))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("更新排序失敗");
+				
+		}
+		
+		
+		@Test
+		void reorderProject_shouldSuccess_whenValidRequest() {
+				ProjectSortDto dto = new ProjectSortDto(List.of("slug-2", "slug-1"));
+				List<Project> projectList = List.of(
+								project(1, "slug-1"),
+								project(2, "slug-2")
+				);
+				
+				when(projectBaseService.selectList(userId, false)).thenReturn(projectList);
+				when(projectBaseService.updateBatchById(anyList())).thenReturn(true);
+				
+				BaseVo<Void> result = projectService.reorderProject(userId, dto);
+				
+				assertThat(result.getIsSuccess()).isTrue();
+				
+				
+				ArgumentCaptor<List<Project>> captor = ArgumentCaptor.forClass(List.class);
+				verify(projectBaseService).updateBatchById(captor.capture());
+				
+				List<Project> updatedProjects = captor.getValue();
+				
+				assertThat(updatedProjects).hasSize(2);
+				Project first = updatedProjects.get(0);
+				assertThat(first.getId()).isEqualTo(2);
+				assertThat(first.getSortOrder()).isEqualTo(10);
+				
+				Project second = updatedProjects.get(1);
+				assertThat(second.getId()).isEqualTo(1);
+				assertThat(second.getSortOrder()).isEqualTo(20);
+		}
+		
 }

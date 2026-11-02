@@ -2,6 +2,7 @@ package com.felixsiu.resume.service;
 
 import com.felixsiu.resume.model.converter.ProjectConverter;
 import com.felixsiu.resume.model.dto.ProjectDto;
+import com.felixsiu.resume.model.dto.ProjectSortDto;
 import com.felixsiu.resume.model.dto.ProjectStackDto;
 import com.felixsiu.resume.model.entity.Project;
 import com.felixsiu.resume.model.entity.ProjectDetail;
@@ -17,9 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -64,6 +63,10 @@ public class ProjectService {
 				return false;
 		}
 		
+		private boolean isSlugsInValid(ProjectSortDto dto) {
+				return dto.slugs().stream().anyMatch(slug -> !StringUtils.hasText(slug));
+		}
+		
 		/**
 		 * 獲取項目列表
 		 *
@@ -96,7 +99,7 @@ public class ProjectService {
 		 * 獲取項目詳情
 		 *
 		 * @param userId    用戶ID
-		 * @param querySlug 查詢的 slug
+		 * @param querySlug 查詢的slug
 		 * @return 項目細節
 		 */
 		public BaseVo<ProjectDetailVo> getProjectDetail(String userId, String querySlug) {
@@ -139,6 +142,12 @@ public class ProjectService {
 		public BaseVo<Void> addProject(String userId, ProjectDto dto) {
 				if (isPostBodyNotOk(dto)) {
 						throw new RuntimeException("參數缺失");
+				}
+				
+				// 先排除重複slug
+				Project existProject = projectBaseService.selectOneBySlug(userId, dto.slug());
+				if (existProject != null) {
+						throw new RuntimeException("該 slug 已被使用，請更換一個");
 				}
 				
 				// 用戶項目當前數量
@@ -188,25 +197,36 @@ public class ProjectService {
 		 * 修改當前項目
 		 *
 		 * @param userId 用戶ID
-		 * @param id     項目ID(PK)
+		 * @param slug   項目slug
 		 * @param dto    修改的項目dto
 		 * @return void
 		 */
 		@Transactional(rollbackFor = Exception.class)
-		public BaseVo<Void> editProject(String userId, Integer id, ProjectDto dto) {
+		public BaseVo<Void> editProject(String userId, String slug, ProjectDto dto) {
 				if (isPostBodyNotOk(dto)) {
 						throw new RuntimeException("參數缺失");
 				}
 				
-				Project foundProject = projectBaseService.selectOneById(userId, id);
+				Project foundProject = projectBaseService.selectOneBySlug(userId, slug);
 				
 				if (foundProject == null) {
 						throw new RuntimeException("找不到對應的項目");
 				}
 				
+				String newSlug = dto.slug();
+				String oldSlug = foundProject.getSlug();
+				if (!newSlug.equals(oldSlug)) {
+						Project existProject = projectBaseService.selectOneBySlug(userId, newSlug);
+						if (existProject != null) {
+								throw new RuntimeException("該 slug 已被使用，請更換一個");
+						}
+				}
+				
+				Integer existingProjectId = foundProject.getId();
+				
 				// 修改主表數據
 				Project newProjectEntity = projectConverter.convertProjectEntity(userId, dto, foundProject.getSortOrder());
-				newProjectEntity.setId(id);
+				newProjectEntity.setId(existingProjectId);
 				
 				boolean isUpdateSuccess = projectBaseService.updateByPK(newProjectEntity);
 				
@@ -214,14 +234,14 @@ public class ProjectService {
 						throw new RuntimeException("更新項目失敗");
 				}
 				
-				ProjectDetail foundProjectDetail = projectDetailService.selectOne(id);
+				ProjectDetail foundProjectDetail = projectDetailService.selectOne(existingProjectId);
 				
 				if (foundProjectDetail == null) {
 						throw new RuntimeException("找不到對應的項目細節");
 				}
 				
 				// 修改項目細節
-				ProjectDetail newDetailEntity = projectConverter.convertDetailEntity(dto, id);
+				ProjectDetail newDetailEntity = projectConverter.convertDetailEntity(dto, existingProjectId);
 				
 				boolean isUpdateDetailSuccess = projectDetailService.updateByPK(newDetailEntity);
 				
@@ -230,13 +250,13 @@ public class ProjectService {
 				}
 				
 				// 先批量刪除技術棧
-				boolean isDeleteStacksSuccess = projectStacksService.deleteByProjectId(id);
+				boolean isDeleteStacksSuccess = projectStacksService.deleteByProjectId(existingProjectId);
 				
 				if (!isDeleteStacksSuccess) {
 						throw new RuntimeException("更新項目技術棧失敗");
 				}
 				
-				List<ProjectStack> projectStackList = projectConverter.convertStackEntity(dto.stacks(), id);
+				List<ProjectStack> projectStackList = projectConverter.convertStackEntity(dto.stacks(), existingProjectId);
 				
 				// 重新批量插入技術棧
 				boolean isInsertStacksSuccess = projectStacksService.insertBatch(projectStackList);
@@ -251,16 +271,85 @@ public class ProjectService {
 		
 		/**
 		 * 刪除某項目
+		 *
 		 * @param userId 用戶ID
-		 * @param id 項目ID
+		 * @param slug   項目slug
 		 * @return void
 		 */
 		@Transactional(rollbackFor = Exception.class)
-		public BaseVo<Void> deleteProject(String userId, Integer id){
-				boolean isDelete = projectBaseService.deleteByPKAndUser(userId, id);
+		public BaseVo<Void> deleteProject(String userId, String slug) {
 				
-				if(!isDelete){
+				Project foundProject = projectBaseService.selectOneBySlug(userId, slug);
+				
+				if (foundProject == null) {
 						throw new RuntimeException("刪除失敗，資料不存在");
+				}
+				
+				Integer existingProjectId = foundProject.getId();
+				
+				boolean isDelete = projectBaseService.deleteByPKAndUser(userId, existingProjectId);
+				
+				if (!isDelete) {
+						throw new RuntimeException("刪除失敗");
+				}
+				
+				return BaseVo.success(null);
+		}
+		
+		@Transactional(rollbackFor = Exception.class)
+		public BaseVo<Void> reorderProject(String userId, ProjectSortDto dto) {
+				if (dto == null || dto.slugs().isEmpty() || isSlugsInValid(dto)) {
+						throw new RuntimeException("參數缺失");
+				}
+				
+				Set<String> slugsSet = new HashSet<>(dto.slugs());
+				if (slugsSet.size() != dto.slugs().size()) {
+						throw new RuntimeException("傳入的 slug 包含重複項");
+				}
+				
+				List<Project> projectList = projectBaseService.selectList(userId, false);
+				if (projectList.isEmpty()) {
+						throw new RuntimeException("暫無項目，請添加項目後重試");
+				}
+				
+				// only 1 project, should not call db
+				if (projectList.size() == 1) {
+						return BaseVo.success(null);
+				}
+				
+				if (projectList.size() != dto.slugs().size()) {
+						throw new RuntimeException("slug 缺失或多餘，請重新整理後重試");
+				}
+				
+				Set<String> dbSlugs = projectList.stream()
+								.map(Project::getSlug)
+								.collect(Collectors.toSet());
+				
+				if (!dbSlugs.equals(slugsSet)) {
+						throw new RuntimeException("slug 不匹配，包含無效的項目");
+				}
+				
+				Map<String, Project> projectMap = projectList
+								.stream()
+								.collect(Collectors.toMap(Project::getSlug, p -> p));
+				
+				List<Project> updateList = new ArrayList<>();
+				int sortOrder = 10;
+				
+				for (String slug : dto.slugs()) {
+						Project p = projectMap.get(slug);
+						
+						Project updateEntity = new Project();
+						updateEntity.setId(p.getId());
+						updateEntity.setSortOrder(sortOrder);
+						
+						updateList.add(updateEntity);
+						sortOrder += 10;
+				}
+				
+				boolean isSuccess = projectBaseService.updateBatchById(updateList);
+				if (!isSuccess) {
+						throw new RuntimeException("更新排序失敗");
 				}
 				
 				return BaseVo.success(null);

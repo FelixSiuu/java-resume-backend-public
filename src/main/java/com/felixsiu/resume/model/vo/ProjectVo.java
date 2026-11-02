@@ -7,7 +7,6 @@ import java.util.List;
 
 @Data
 public class ProjectVo {
-		private Integer id;
 		private String slug;
 		private Integer sortOrder;
 		private String name;

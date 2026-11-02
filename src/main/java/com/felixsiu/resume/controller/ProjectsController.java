@@ -2,6 +2,7 @@ package com.felixsiu.resume.controller;
 
 import com.felixsiu.resume.annotation.StandardApiResponses;
 import com.felixsiu.resume.model.dto.ProjectDto;
+import com.felixsiu.resume.model.dto.ProjectSortDto;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.model.vo.ProjectDetailVo;
 import com.felixsiu.resume.model.vo.ProjectVo;
@@ -28,8 +29,8 @@ public class ProjectsController {
 		
 		@GetMapping
 		@Operation(
-						summary = "獲取項目經驗",
-						description = "獲取當前登入用戶的項目經驗"
+						summary = "獲取項目列表",
+						description = "獲取當前登入用戶的項目列表"
 		)
 		@StandardApiResponses
 		public BaseVo<List<ProjectVo>> getProjects(
@@ -64,33 +65,54 @@ public class ProjectsController {
 						@RequestAttribute("userId") String userId,
 						@Parameter(description = "data from front end")
 						@Valid @RequestBody ProjectDto projectDto
-		){
+		) {
 				return projectService.addProject(userId, projectDto);
 		}
 		
-		@PutMapping("/{id}")
-		@Operation(summary = "修改指定項目")
+		@PutMapping("/{slug}")
+		@Operation(
+						summary = "修改指定項目",
+						description = "修改指定 slug 的項目"
+		
+		)
 		@StandardApiResponses
 		public BaseVo<Void> editProject(
 						@Parameter(hidden = true)
 						@RequestAttribute("userId") String userId,
-						@Parameter(description = "data from front end")
+						@Parameter(description = "project data from front end")
 						@Valid @RequestBody ProjectDto projectDto,
-						@Parameter(description = "項目 id")
-						@PathVariable Integer id
-		){
-				return projectService.editProject(userId, id, projectDto);
+						@Parameter(description = "項目 slug")
+						@PathVariable String slug
+		) {
+				return projectService.editProject(userId, slug, projectDto);
 		}
 		
-		@DeleteMapping("/{id}")
-		@Operation(summary = "刪除指定項目")
+		@DeleteMapping("/{slug}")
+		@Operation(
+						summary = "刪除指定項目",
+						description = "刪除指定 slug 的項目"
+		)
 		@StandardApiResponses
 		public BaseVo<Void> deleteProject(
 						@Parameter(hidden = true)
 						@RequestAttribute("userId") String userId,
-						@Parameter(description = "項目 id")
-						@PathVariable Integer id
+						@Parameter(description = "項目 slug")
+						@PathVariable String slug
+		) {
+				return projectService.deleteProject(userId, slug);
+		}
+		
+		@PutMapping("/reorder")
+		@Operation(
+						summary = "重新排序項目"
+		)
+		@StandardApiResponses
+		public BaseVo<Void> reorderProject(
+						@Parameter(hidden = true)
+						@RequestAttribute("userId") String userId,
+						@Parameter(description = "完整slug列表")
+						@Valid @RequestBody ProjectSortDto projectSortDto
 		){
-				return projectService.deleteProject(userId, id);
+				return projectService.reorderProject(userId, projectSortDto);
 		}
 }

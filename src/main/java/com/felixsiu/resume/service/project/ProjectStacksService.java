@@ -11,15 +11,6 @@ import java.util.List;
 @Service
 public class ProjectStacksService extends ServiceImpl<ProjectStacksMapper, ProjectStack> {
 		
-		/**
-		 * query all stack
-		 *
-		 * @return stack list
-		 */
-		public List<ProjectStack> selectList() {
-				return this.list();
-		}
-		
 		public List<ProjectStack> selectListByProjectIds(List<Integer> projectIds) {
 				if (projectIds == null || projectIds.isEmpty()) return List.of();
 				LambdaQueryWrapper<ProjectStack> wrapper = new LambdaQueryWrapper<>();
