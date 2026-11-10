@@ -16,5 +16,10 @@ public record LoginDto(
 				@Size(min = 6, max = 50, message = "password 長度必須在 6-50 個字元之間")
 				String password,
 				@NotBlank(message = "captcha 不能為空")
-				String captcha) {
+				String captcha,
+				Boolean rememberMe
+) {
+		public LoginDto{
+				if(rememberMe == null) rememberMe = false;
+		}
 }

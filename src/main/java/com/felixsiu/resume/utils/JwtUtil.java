@@ -37,11 +37,11 @@ public class JwtUtil {
 		/**
 		 * 生成 Token（有效期 24 小時）
 		 */
-		public String generateToken(String id) {
+		public String generateToken(String id, Integer ttl) {
 				return Jwts.builder()
 								.subject(id)
 								.issuedAt(new Date())
-								.expiration(new Date(System.currentTimeMillis() + 24L * 60 * 60 * 1000))  // 注意要加 L
+								.expiration(new Date(System.currentTimeMillis() + ttl * 1000L))  // 注意要加 L
 								.signWith(secretKey)
 								.compact();
 		}

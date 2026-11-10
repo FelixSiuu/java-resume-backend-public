@@ -15,10 +15,12 @@ public class WebMvcConfig implements WebMvcConfigurer {
 		private AuthInterceptor authInterceptor;
 		
 		@Autowired
+		private XsrfInterceptor xsrfInterceptor;
+		
+		@Autowired
 		CorsProperties corsProperties;
 		
 		@Override
-		
 		public void addCorsMappings(CorsRegistry registry) {
 				List<String> origins = corsProperties.getAllowedOrigins();
 				
@@ -36,6 +38,25 @@ public class WebMvcConfig implements WebMvcConfigurer {
 				registry
 								.addInterceptor(authInterceptor)
 								.addPathPatterns("/api/v1/**")
-								.excludePathPatterns("/api/v1/register", "/api/v1/login", "/api/v1/getCaptcha", "/api/v1/public/**");
+								.excludePathPatterns(
+												"/api/v1/auth/register",
+												"/api/v1/auth/login",
+												"/api/v1/auth/captcha",
+												"/api/v1/auth/logout",
+												"/api/v1/auth/refresh",
+												"/api/v1/public/**"
+								);
+				
+				registry
+								.addInterceptor(xsrfInterceptor)
+								.addPathPatterns("/api/v1/**")
+								.excludePathPatterns(
+												"/api/v1/auth/register",
+												"/api/v1/auth/login",
+												"/api/v1/auth/captcha",
+												"/api/v1/auth/logout",
+												"/api/v1/auth/refresh",
+												"/api/v1/public/**"
+								);
 		}
 }

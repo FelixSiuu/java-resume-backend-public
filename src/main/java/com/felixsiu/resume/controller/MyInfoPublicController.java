@@ -39,7 +39,7 @@ public class MyInfoPublicController {
 		@Autowired
 		ContactService contactService;
 		@Autowired
-		UserService userService;
+		AuthService authService;
 		@Autowired
 		AvatarService avatarService;
 		@Autowired
@@ -56,7 +56,7 @@ public class MyInfoPublicController {
 						@Parameter(description = "username 用戶名")
 						@PathVariable String username
 		) {
-				String userId = userService.getUserId(username);
+				String userId = authService.getUserId(username);
 				return aboutService.getAboutMe(userId);
 		}
 		
@@ -69,7 +69,7 @@ public class MyInfoPublicController {
 						@Parameter(description = "username 用戶名")
 						@PathVariable String username
 		) {
-				String userId = userService.getUserId(username);
+				String userId = authService.getUserId(username);
 				return skillService.getCoreSkills(userId);
 		}
 		
@@ -82,7 +82,7 @@ public class MyInfoPublicController {
 						@Parameter(description = "username 用戶名")
 						@PathVariable String username
 		) {
-				String userId = userService.getUserId(username);
+				String userId = authService.getUserId(username);
 				return workingExpService.getWorkingExperiences(userId);
 		}
 		
@@ -95,7 +95,7 @@ public class MyInfoPublicController {
 						@Parameter(description = "username 用戶名")
 						@PathVariable String username
 		) {
-				String userId = userService.getUserId(username);
+				String userId = authService.getUserId(username);
 				return educationService.getEducation(userId);
 		}
 		
@@ -108,7 +108,7 @@ public class MyInfoPublicController {
 						@Parameter(description = "username 用戶名")
 						@PathVariable String username
 		) {
-				String userId = userService.getUserId(username);
+				String userId = authService.getUserId(username);
 				return contactService.getContact(userId);
 		}
 		
@@ -121,7 +121,7 @@ public class MyInfoPublicController {
 						@Parameter(description = "username 用戶名")
 						@PathVariable String username
 		) {
-				String userId = userService.getUserId(username);
+				String userId = authService.getUserId(username);
 				Optional<Avatar> avatarOpt = avatarService.getAvatar(userId);
 				
 				if (avatarOpt.isPresent()) {
@@ -144,7 +144,7 @@ public class MyInfoPublicController {
 						@Parameter(description = "username 用戶名")
 						@PathVariable String username
 		) {
-				String userId = userService.getUserId(username);
+				String userId = authService.getUserId(username);
 				return resumeService.getResume(model, userId);
 		}
 		
@@ -157,7 +157,7 @@ public class MyInfoPublicController {
 						@Parameter(description = "username 用戶名")
 						@PathVariable String username
 		) throws IOException {
-				String userId = userService.getUserId(username);
+				String userId = authService.getUserId(username);
 				return resumeService.exportPdf(userId);
 		}
 		
@@ -173,7 +173,7 @@ public class MyInfoPublicController {
 						@RequestParam(required = false, defaultValue = "false")
 						Boolean featured
 		) {
-				String userId = userService.getUserId(username);
+				String userId = authService.getUserId(username);
 				return projectService.getProjects(userId, featured);
 		}
 		
@@ -188,7 +188,7 @@ public class MyInfoPublicController {
 						@Parameter(description = "項目 slug")
 						@PathVariable String slug
 		) {
-				String userId = userService.getUserId(username);
+				String userId = authService.getUserId(username);
 				return projectService.getProjectDetail(userId, slug);
 		}
 }
