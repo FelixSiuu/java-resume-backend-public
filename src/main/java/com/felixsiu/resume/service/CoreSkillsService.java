@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.felixsiu.resume.model.dto.SkillDto;
 import com.felixsiu.resume.model.entity.CoreSkills;
 import com.felixsiu.resume.model.vo.BaseVo;
+import com.felixsiu.resume.model.vo.CoreSkillVo;
 import com.felixsiu.resume.respository.CoreSkillsMapper;
 import com.felixsiu.resume.utils.CacheKeys;
 import com.felixsiu.resume.utils.MyRedisTemplate;
@@ -16,7 +17,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 @Service
-public class SkillService {
+public class CoreSkillsService {
 		@Autowired
 		CoreSkillsMapper coreSkillsMapper;
 		
@@ -29,11 +30,11 @@ public class SkillService {
 		/**
 		 * 獲取技能
 		 */
-		public BaseVo<List<CoreSkills>> getCoreSkills(String userId) {
+		public BaseVo<List<CoreSkillVo>> getCoreSkills(String userId) {
 				String cacheKey = CacheKeys.skills(userId);
 				
 				// 先從 Redis 查
-				List<CoreSkills> cached = myRedisTemplate.get(cacheKey, new TypeReference<List<CoreSkills>>() {
+				List<CoreSkillVo> cached = myRedisTemplate.get(cacheKey, new TypeReference<List<CoreSkillVo>>() {
 				});
 				if (cached != null) {
 						System.out.println("✅ 命中缓存！");
@@ -47,10 +48,20 @@ public class SkillService {
 				lambdaQueryWrapper.eq(CoreSkills::getUserId, userId);
 				List<CoreSkills> coreSkillsList = coreSkillsMapper.selectList(lambdaQueryWrapper);
 				
-				// 3. 寫入緩存
-				myRedisTemplate.set(cacheKey, coreSkillsList, CACHE_TTL, CACHE_TTL_UNIT);
+				List<CoreSkillVo> coreSkillVoList = coreSkillsList.stream().map(e -> {
+						CoreSkillVo vo = new CoreSkillVo();
+						vo.setId(e.getId());
+						vo.setSummary(e.getSummary());
+						vo.setDetails(e.getDetails());
+						vo.setCreateTime(e.getCreateTime());
+						vo.setUpdateTime(e.getUpdateTime());
+						return vo;
+				}).toList();
 				
-				return BaseVo.success(coreSkillsList);
+				// 3. 寫入緩存
+				myRedisTemplate.set(cacheKey, coreSkillVoList, CACHE_TTL, CACHE_TTL_UNIT);
+				
+				return BaseVo.success(coreSkillVoList);
 		}
 		
 		/**

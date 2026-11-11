@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.felixsiu.resume.model.dto.EduDto;
 import com.felixsiu.resume.model.entity.Education;
 import com.felixsiu.resume.model.vo.BaseVo;
+import com.felixsiu.resume.model.vo.EducationVo;
 import com.felixsiu.resume.respository.EducationMapper;
 import com.felixsiu.resume.utils.CacheKeys;
 import com.felixsiu.resume.utils.MyRedisTemplate;
@@ -29,11 +30,11 @@ public class EducationService {
 		/**
 		 * 獲取我的教育
 		 */
-		public BaseVo<List<Education>> getEducation(String userId) {
+		public BaseVo<List<EducationVo>> getEducation(String userId) {
 				String cacheKey = CacheKeys.education(userId);
 				
 				// 先從 Redis 查
-				List<Education> cached = myRedisTemplate.get(cacheKey, new TypeReference<List<Education>>() {
+				List<EducationVo> cached = myRedisTemplate.get(cacheKey, new TypeReference<List<EducationVo>>() {
 				});
 				if (cached != null) {
 						System.out.println("✅ 命中缓存！");
@@ -48,10 +49,22 @@ public class EducationService {
 				
 				List<Education> educationList = educationMapper.selectList(eLambdaQueryWrapper);
 				
-				// 3. 寫入緩存
-				myRedisTemplate.set(cacheKey, educationList, CACHE_TTL, CACHE_TTL_UNIT);
+				List<EducationVo> educationVoList = educationList.stream().map(e -> {
+						EducationVo vo = new EducationVo();
+						vo.setId(e.getId());
+						vo.setStartDate(e.getStartDate());
+						vo.setEndDate(e.getEndDate());
+						vo.setDegree(e.getDegree());
+						vo.setMajor(e.getMajor());
+						vo.setInstitution(e.getInstitution());
+						vo.setLocation(e.getLocation());
+						return vo;
+				}).toList();
 				
-				return BaseVo.success(educationList);
+				// 3. 寫入緩存
+				myRedisTemplate.set(cacheKey, educationVoList, CACHE_TTL, CACHE_TTL_UNIT);
+				
+				return BaseVo.success(educationVoList);
 		}
 		
 		/**

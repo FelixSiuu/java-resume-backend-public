@@ -1,10 +1,10 @@
 package com.felixsiu.resume.service;
 
-import com.felixsiu.resume.model.entity.About;
 import com.felixsiu.resume.model.entity.Avatar;
-import com.felixsiu.resume.model.entity.CoreSkills;
-import com.felixsiu.resume.model.entity.Education;
+import com.felixsiu.resume.model.vo.AboutVo;
 import com.felixsiu.resume.model.vo.ContactVo;
+import com.felixsiu.resume.model.vo.CoreSkillVo;
+import com.felixsiu.resume.model.vo.EducationVo;
 import com.felixsiu.resume.model.vo.WorkingExperienceVo;
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,7 +37,7 @@ public class ResumeService {
 		private AboutService aboutService;
 		
 		@Autowired
-		private SkillService skillService;
+		private CoreSkillsService coreSkillsService;
 		
 		@Autowired
 		private EducationService educationService;
@@ -53,9 +53,9 @@ public class ResumeService {
 		
 		public String getResume(Model model, @RequestAttribute("userId") String userId) {
 				// 1. 獲取所有數據
-				List<About> aboutList = aboutService.getAboutMe(userId).getData();
-				List<CoreSkills> skillsList = skillService.getCoreSkills(userId).getData();
-				List<Education> eduList = educationService.getEducation(userId).getData();
+				List<AboutVo> aboutList = aboutService.getAboutMe(userId).getData();
+				List<CoreSkillVo> skillsList = coreSkillsService.getCoreSkills(userId).getData();
+				List<EducationVo> eduList = educationService.getEducation(userId).getData();
 				List<WorkingExperienceVo> expList = workingExpService.getWorkingExperiences(userId).getData();
 				ContactVo contact = contactService.getContact(userId).getData();
 				Map<String, Boolean> publicMap = contact.getPublicMap();
@@ -80,9 +80,9 @@ public class ResumeService {
 		
 		public ResponseEntity<InputStreamResource> exportPdf(String userId) throws IOException {
 				// 1. 獲取所有數據
-				List<About> aboutList = aboutService.getAboutMe(userId).getData();
-				List<CoreSkills> skillsList = skillService.getCoreSkills(userId).getData();
-				List<Education> eduList = educationService.getEducation(userId).getData();
+				List<AboutVo> aboutList = aboutService.getAboutMe(userId).getData();
+				List<CoreSkillVo> skillsList = coreSkillsService.getCoreSkills(userId).getData();
+				List<EducationVo> eduList = educationService.getEducation(userId).getData();
 				List<WorkingExperienceVo> expList = workingExpService.getWorkingExperiences(userId).getData();
 				ContactVo contact = contactService.getContact(userId).getData();
 				Map<String, Boolean> publicMap = contact.getPublicMap();

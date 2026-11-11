@@ -2,8 +2,8 @@ package com.felixsiu.resume.controller;
 
 import com.felixsiu.resume.annotation.StandardApiResponses;
 import com.felixsiu.resume.model.dto.EduDto;
-import com.felixsiu.resume.model.entity.Education;
 import com.felixsiu.resume.model.vo.BaseVo;
+import com.felixsiu.resume.model.vo.EducationVo;
 import com.felixsiu.resume.service.EducationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -31,7 +31,7 @@ public class EducationController {
 						description = "獲取當前登入用戶的教育程度資訊列表"
 		)
 		@StandardApiResponses
-		public BaseVo<List<Education>> education(
+		public BaseVo<List<EducationVo>> education(
 						@Parameter(hidden = true)
 						@RequestAttribute("userId") String userId
 		) {

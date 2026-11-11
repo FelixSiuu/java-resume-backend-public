@@ -2,9 +2,9 @@ package com.felixsiu.resume.controller;
 
 import com.felixsiu.resume.annotation.StandardApiResponses;
 import com.felixsiu.resume.model.dto.SkillDto;
-import com.felixsiu.resume.model.entity.CoreSkills;
 import com.felixsiu.resume.model.vo.BaseVo;
-import com.felixsiu.resume.service.SkillService;
+import com.felixsiu.resume.model.vo.CoreSkillVo;
+import com.felixsiu.resume.service.CoreSkillsService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -23,7 +23,7 @@ import java.util.List;
 public class CoreSkillsController {
 		
 		@Autowired
-		SkillService skillService;
+		CoreSkillsService coreSkillsService;
 		
 		
 		@GetMapping
@@ -32,11 +32,11 @@ public class CoreSkillsController {
 						description = "獲取當前登入用戶的核心技能資訊列表"
 		)
 		@StandardApiResponses
-		public BaseVo<List<CoreSkills>> coreSkills(
+		public BaseVo<List<CoreSkillVo>> coreSkills(
 						@Parameter(hidden = true)
 						@RequestAttribute("userId") String userId
 		) {
-				return skillService.getCoreSkills(userId);
+				return coreSkillsService.getCoreSkills(userId);
 		}
 		
 		@PutMapping("/{id}")
@@ -52,7 +52,7 @@ public class CoreSkillsController {
 						@Parameter(hidden = true)
 						@RequestAttribute("userId") String userId
 		) {
-				return skillService.editSkill(id, skillDto, userId);
+				return coreSkillsService.editSkill(id, skillDto, userId);
 		}
 		
 		@DeleteMapping("/{id}")
@@ -64,7 +64,7 @@ public class CoreSkillsController {
 						@Parameter(hidden = true)
 						@RequestAttribute("userId") String userId
 		) {
-				return skillService.deleteSkill(id, userId);
+				return coreSkillsService.deleteSkill(id, userId);
 		}
 		
 		@PostMapping
@@ -74,6 +74,6 @@ public class CoreSkillsController {
 						@Valid @RequestBody SkillDto skillDto,
 						@Parameter(hidden = true)
 						@RequestAttribute("userId") String userId) {
-				return skillService.addSkill(skillDto, userId);
+				return coreSkillsService.addSkill(skillDto, userId);
 		}
 }

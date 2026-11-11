@@ -1,9 +1,6 @@
 package com.felixsiu.resume.controller;
 
-import com.felixsiu.resume.model.entity.About;
 import com.felixsiu.resume.model.entity.Avatar;
-import com.felixsiu.resume.model.entity.CoreSkills;
-import com.felixsiu.resume.model.entity.Education;
 import com.felixsiu.resume.model.vo.*;
 import com.felixsiu.resume.service.*;
 import io.swagger.v3.oas.annotations.Operation;
@@ -33,7 +30,7 @@ public class MyInfoPublicController {
 		@Autowired
 		AboutService aboutService;
 		@Autowired
-		SkillService skillService;
+		CoreSkillsService coreSkillsService;
 		@Autowired
 		WorkingExpService workingExpService;
 		@Autowired
@@ -52,7 +49,7 @@ public class MyInfoPublicController {
 		 */
 		@GetMapping("/{username}/about")
 		@Operation(summary = "透過用戶名獲取關於我")
-		public BaseVo<List<About>> about(
+		public BaseVo<List<AboutVo>> about(
 						@Parameter(description = "username 用戶名")
 						@PathVariable String username
 		) {
@@ -65,12 +62,12 @@ public class MyInfoPublicController {
 		 */
 		@GetMapping("/{username}/coreSkills")
 		@Operation(summary = "透過用戶名獲取核心技能")
-		public BaseVo<List<CoreSkills>> coreSkills(
+		public BaseVo<List<CoreSkillVo>> coreSkills(
 						@Parameter(description = "username 用戶名")
 						@PathVariable String username
 		) {
 				String userId = authService.getUserId(username);
-				return skillService.getCoreSkills(userId);
+				return coreSkillsService.getCoreSkills(userId);
 		}
 		
 		/**
@@ -91,7 +88,7 @@ public class MyInfoPublicController {
 		 */
 		@GetMapping("/{username}/education")
 		@Operation(summary = "透過用戶名獲取教育程度")
-		public BaseVo<List<Education>> education(
+		public BaseVo<List<EducationVo>> education(
 						@Parameter(description = "username 用戶名")
 						@PathVariable String username
 		) {

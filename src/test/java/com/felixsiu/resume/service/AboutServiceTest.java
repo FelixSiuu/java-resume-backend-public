@@ -2,6 +2,7 @@ package com.felixsiu.resume.service;
 
 import com.felixsiu.resume.model.dto.AboutDto;
 import com.felixsiu.resume.model.entity.About;
+import com.felixsiu.resume.model.vo.AboutVo;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.respository.AboutMapper;
 import com.felixsiu.resume.utils.MyRedisTemplate;
@@ -37,19 +38,26 @@ class AboutServiceTest {
 		
 		@Test
 		void getAboutMe_shouldReturnAboutList_whenUserExists() {
+				LocalDateTime createTime1 = LocalDateTime.of(2024, 1, 1, 10, 0);
+				LocalDateTime updateTime1 = LocalDateTime.of(2024, 1, 2, 10, 0);
+				LocalDateTime createTime2 = LocalDateTime.of(2024, 2, 1, 10, 0);
+				LocalDateTime updateTime2 = LocalDateTime.of(2024, 2, 2, 10, 0);
+				
 				List<About> mockAboutList = new ArrayList<>();
 				
 				About about1 = new About();
 				about1.setId(1);
 				about1.setUserId(userId);
 				about1.setParagraph("Hello World");
-				about1.setCreateTime(LocalDateTime.now());
+				about1.setCreateTime(createTime1);
+				about1.setUpdateTime(updateTime1);
 				
 				About about2 = new About();
 				about2.setId(2);
 				about2.setUserId(userId);
 				about2.setParagraph("Java Developer");
-				about2.setCreateTime(LocalDateTime.now());
+				about2.setCreateTime(createTime2);
+				about2.setUpdateTime(updateTime2);
 				
 				mockAboutList.add(about1);
 				mockAboutList.add(about2);
@@ -57,39 +65,47 @@ class AboutServiceTest {
 				when(myRedisTemplate.get(anyString(), any())).thenReturn(null);
 				when(aboutMapper.selectList(any())).thenReturn(mockAboutList);
 				
-				BaseVo<List<About>> result = aboutService.getAboutMe(userId);
+				BaseVo<List<AboutVo>> result = aboutService.getAboutMe(userId);
 				
 				assertThat(result.getIsSuccess()).isTrue();
-				assertThat(result.getData().size() == 2);
-				assertThat(result.getData().get(0).getParagraph().contains("Hello"));
+				assertThat(result.getData()).hasSize(2);
+				assertThat(result.getData().get(0).getId()).isEqualTo(1);
+				assertThat(result.getData().get(0).getParagraph()).contains("Hello");
+				assertThat(result.getData().get(0).getCreateTime()).isEqualTo(createTime1);
+				assertThat(result.getData().get(0).getUpdateTime()).isEqualTo(updateTime1);
+				assertThat(result.getData().get(1).getId()).isEqualTo(2);
+				assertThat(result.getData().get(1).getParagraph()).isEqualTo("Java Developer");
 				
-				//  驗證 Redis 有被呼叫（但沒有真的連線）
+				ArgumentCaptor<Object> cacheValueCaptor = ArgumentCaptor.forClass(Object.class);
 				verify(myRedisTemplate, times(1)).get(anyString(), any());
-				verify(myRedisTemplate, times(1)).set(anyString(), any(), anyLong(), any());
+				verify(myRedisTemplate, times(1)).set(anyString(), cacheValueCaptor.capture(), anyLong(), any());
+				assertThat(cacheValueCaptor.getValue()).isInstanceOf(List.class);
+				assertThat((List<?>) cacheValueCaptor.getValue()).hasSize(2)
+								.allSatisfy(item -> assertThat(item).isInstanceOf(AboutVo.class));
 				
-				// 驗證 Mapper 被呼叫（因為快取未命中）
 				verify(aboutMapper, times(1)).selectList(any());
 		}
 		
 		@Test
 		void getAboutMe_shouldReturnFromCache_whenCacheExists() {
-				List<About> mockCachedList = new ArrayList<>();
-				About about = new About();
-				about.setId(1);
-				about.setUserId(userId);
-				about.setParagraph("Cached Data");
-				mockCachedList.add(about);
+				List<AboutVo> mockCachedList = new ArrayList<>();
+				AboutVo aboutVo = new AboutVo();
+				aboutVo.setId(1);
+				aboutVo.setParagraph("Cached Data");
+				aboutVo.setCreateTime(LocalDateTime.of(2024, 1, 1, 10, 0));
+				aboutVo.setUpdateTime(LocalDateTime.of(2024, 1, 2, 10, 0));
+				mockCachedList.add(aboutVo);
 				
 				when(myRedisTemplate.get(anyString(), any())).thenReturn(mockCachedList);
 				
-				BaseVo<List<About>> result = aboutService.getAboutMe(userId);
+				BaseVo<List<AboutVo>> result = aboutService.getAboutMe(userId);
 				
 				assertThat(result.getIsSuccess()).isTrue();
 				assertThat(result.getData()).hasSize(1);
 				assertThat(result.getData().get(0).getParagraph()).isEqualTo("Cached Data");
 				
-				// 驗證：Mapper 應該沒有被呼叫
 				verify(aboutMapper, never()).selectList(any());
+				verify(myRedisTemplate, never()).set(anyString(), any(), anyLong(), any());
 		}
 		
 		@Test
@@ -97,13 +113,12 @@ class AboutServiceTest {
 				final String fakeUserId = "fake_id";
 				
 				when(myRedisTemplate.get(anyString(), any())).thenReturn(null);
-				
 				when(aboutMapper.selectList(any())).thenReturn(new ArrayList<>());
 				
-				BaseVo<List<About>> result = aboutService.getAboutMe(fakeUserId);
+				BaseVo<List<AboutVo>> result = aboutService.getAboutMe(fakeUserId);
 				
 				assertThat(result.getIsSuccess()).isTrue();
-				assertThat(result.getData().isEmpty());
+				assertThat(result.getData()).isEmpty();
 		}
 		
 		@Test

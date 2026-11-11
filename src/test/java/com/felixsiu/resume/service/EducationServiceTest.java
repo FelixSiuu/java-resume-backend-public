@@ -3,10 +3,12 @@ package com.felixsiu.resume.service;
 import com.felixsiu.resume.model.dto.EduDto;
 import com.felixsiu.resume.model.entity.Education;
 import com.felixsiu.resume.model.vo.BaseVo;
+import com.felixsiu.resume.model.vo.EducationVo;
 import com.felixsiu.resume.respository.EducationMapper;
 import com.felixsiu.resume.utils.MyRedisTemplate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -38,41 +40,62 @@ class EducationServiceTest {
 				List<Education> mockList = new ArrayList<>();
 				
 				Education education = new Education();
-				education.setMajor("marketing");
+				education.setId(1);
+				education.setUserId(userId);
+				education.setStartDate("2020-09");
 				education.setEndDate("2024-09");
+				education.setInstitution("NUS");
+				education.setDegree("Bachelor");
+				education.setMajor("marketing");
+				education.setLocation("Singapore");
 				
 				mockList.add(education);
 				
 				when(myRedisTemplate.get(anyString(), any())).thenReturn(null);
 				when(educationMapper.selectList(any())).thenReturn(mockList);
 				
-				BaseVo<List<Education>> result = educationService.getEducation(userId);
+				BaseVo<List<EducationVo>> result = educationService.getEducation(userId);
 				
 				assertThat(result.getIsSuccess()).isTrue();
-				assertThat(result.getData().size() == 1);
-				assertThat(result.getData().get(0).getMajor().contains("marketing"));
+				assertThat(result.getData()).hasSize(1);
+				assertThat(result.getData().get(0).getId()).isEqualTo(1);
+				assertThat(result.getData().get(0).getMajor()).contains("marketing");
+				assertThat(result.getData().get(0).getStartDate()).isEqualTo("2020-09");
+				assertThat(result.getData().get(0).getEndDate()).isEqualTo("2024-09");
+				assertThat(result.getData().get(0).getInstitution()).isEqualTo("NUS");
+				assertThat(result.getData().get(0).getDegree()).isEqualTo("Bachelor");
+				assertThat(result.getData().get(0).getLocation()).isEqualTo("Singapore");
 				
+				ArgumentCaptor<Object> cacheValueCaptor = ArgumentCaptor.forClass(Object.class);
 				verify(myRedisTemplate, times(1)).get(anyString(), any());
+				verify(myRedisTemplate, times(1)).set(anyString(), cacheValueCaptor.capture(), anyLong(), any());
+				assertThat(cacheValueCaptor.getValue()).isInstanceOf(List.class);
+				assertThat((List<?>) cacheValueCaptor.getValue()).hasSize(1)
+								.allSatisfy(item -> assertThat(item).isInstanceOf(EducationVo.class));
+				verify(educationMapper, times(1)).selectList(any());
 		}
 		
 		@Test
 		void getEducation_shouldReturnEducationList_whenCacheExists() {
-				List<Education> mockList = new ArrayList<>();
+				List<EducationVo> mockList = new ArrayList<>();
 				
-				Education education = new Education();
-				education.setMajor("Cached Data");
+				EducationVo educationVo = new EducationVo();
+				educationVo.setId(1);
+				educationVo.setMajor("Cached Data");
+				educationVo.setInstitution("Cached University");
 				
-				mockList.add(education);
+				mockList.add(educationVo);
 				
 				when(myRedisTemplate.get(anyString(), any())).thenReturn(mockList);
 				
-				BaseVo<List<Education>> result = educationService.getEducation(userId);
+				BaseVo<List<EducationVo>> result = educationService.getEducation(userId);
 				
 				assertThat(result.getIsSuccess()).isTrue();
-				assertThat(result.getData().size() == 1);
-				assertThat(result.getData().get(0).getMajor().equals("Cached Data"));
+				assertThat(result.getData()).hasSize(1);
+				assertThat(result.getData().get(0).getMajor()).isEqualTo("Cached Data");
 				
 				verify(educationMapper, never()).selectList(any());
+				verify(myRedisTemplate, never()).set(anyString(), any(), anyLong(), any());
 		}
 		
 		@Test
@@ -80,13 +103,12 @@ class EducationServiceTest {
 				final String fakeUserId = "fake_id";
 				
 				when(myRedisTemplate.get(anyString(), any())).thenReturn(null);
-				
 				when(educationMapper.selectList(any())).thenReturn(new ArrayList<>());
 				
-				BaseVo<List<Education>> result = educationService.getEducation(fakeUserId);
+				BaseVo<List<EducationVo>> result = educationService.getEducation(fakeUserId);
 				
 				assertThat(result.getIsSuccess()).isTrue();
-				assertThat(result.getData().isEmpty());
+				assertThat(result.getData()).isEmpty();
 		}
 		
 		@Test

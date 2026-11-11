@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.felixsiu.resume.model.dto.SkillDto;
 import com.felixsiu.resume.model.entity.CoreSkills;
 import com.felixsiu.resume.model.vo.BaseVo;
+import com.felixsiu.resume.model.vo.CoreSkillVo;
 import com.felixsiu.resume.respository.CoreSkillsMapper;
 import com.felixsiu.resume.utils.CacheKeys;
 import com.felixsiu.resume.utils.MyRedisTemplate;
@@ -25,7 +26,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-class SkillServiceTest {
+class CoreSkillsServiceTest {
 		
 		@Mock
 		private CoreSkillsMapper coreSkillsMapper;
@@ -34,20 +35,32 @@ class SkillServiceTest {
 		private MyRedisTemplate myRedisTemplate;
 		
 		@InjectMocks
-		private SkillService skillService;
+		private CoreSkillsService coreSkillsService;
 		
 		private final String userId = "test-user-123";
 		
 		// ========== 測試數據工廠 ==========
-		private CoreSkills createSkill(Integer id, String summary, String details) {
+		private CoreSkills createSkill(Integer id, String summary, String details,
+						LocalDateTime createTime, LocalDateTime updateTime) {
 				CoreSkills skill = new CoreSkills();
 				skill.setId(id);
 				skill.setUserId(userId);
 				skill.setSummary(summary);
 				skill.setDetails(details);
-				skill.setCreateTime(LocalDateTime.now());
-				skill.setUpdateTime(LocalDateTime.now());
+				skill.setCreateTime(createTime);
+				skill.setUpdateTime(updateTime);
 				return skill;
+		}
+		
+		private CoreSkillVo createSkillVo(Integer id, String summary, String details,
+						LocalDateTime createTime, LocalDateTime updateTime) {
+				CoreSkillVo vo = new CoreSkillVo();
+				vo.setId(id);
+				vo.setSummary(summary);
+				vo.setDetails(details);
+				vo.setCreateTime(createTime);
+				vo.setUpdateTime(updateTime);
+				return vo;
 		}
 		
 		private SkillDto createSkillDto(String summary, String details) {
@@ -60,24 +73,23 @@ class SkillServiceTest {
 		
 		@Test
 		void getCoreSkills_shouldReturnFromCache_whenCacheExists() {
-				// 準備：Redis 有快取
-				List<CoreSkills> mockCachedList = List.of(
-								createSkill(1, "Frontend", "React, TypeScript"),
-								createSkill(2, "Backend", "Java, Spring Boot")
+				LocalDateTime createTime = LocalDateTime.of(2024, 1, 1, 10, 0);
+				LocalDateTime updateTime = LocalDateTime.of(2024, 1, 2, 10, 0);
+				List<CoreSkillVo> mockCachedList = List.of(
+								createSkillVo(1, "Frontend", "React, TypeScript", createTime, updateTime),
+								createSkillVo(2, "Backend", "Java, Spring Boot", createTime, updateTime)
 				);
 				String cacheKey = CacheKeys.skills(userId);
 				
 				when(myRedisTemplate.get(eq(cacheKey), any(TypeReference.class))).thenReturn(mockCachedList);
 				
-				// 執行
-				BaseVo<List<CoreSkills>> result = skillService.getCoreSkills(userId);
+				BaseVo<List<CoreSkillVo>> result = coreSkillsService.getCoreSkills(userId);
 				
-				// 驗證
 				assertThat(result.getIsSuccess()).isTrue();
 				assertThat(result.getData()).hasSize(2);
 				assertThat(result.getData().get(0).getSummary()).isEqualTo("Frontend");
+				assertThat(result.getData().get(0).getDetails()).isEqualTo("React, TypeScript");
 				
-				// 驗證：快取命中的情況下，不應該查資料庫
 				verify(myRedisTemplate, times(1)).get(eq(cacheKey), any(TypeReference.class));
 				verify(coreSkillsMapper, never()).selectList(any());
 				verify(myRedisTemplate, never()).set(anyString(), any(), anyLong(), any());
@@ -85,44 +97,51 @@ class SkillServiceTest {
 		
 		@Test
 		void getCoreSkills_shouldQueryDatabase_whenCacheMiss() {
-				// 準備：Redis 回傳 null（快取未命中）
+				LocalDateTime createTime1 = LocalDateTime.of(2024, 1, 1, 10, 0);
+				LocalDateTime updateTime1 = LocalDateTime.of(2024, 1, 2, 10, 0);
+				LocalDateTime createTime2 = LocalDateTime.of(2024, 2, 1, 10, 0);
+				LocalDateTime updateTime2 = LocalDateTime.of(2024, 2, 2, 10, 0);
 				List<CoreSkills> mockDbList = List.of(
-								createSkill(1, "Frontend", "React, TypeScript"),
-								createSkill(2, "Backend", "Java, Spring Boot")
+								createSkill(1, "Frontend", "React, TypeScript", createTime1, updateTime1),
+								createSkill(2, "Backend", "Java, Spring Boot", createTime2, updateTime2)
 				);
 				String cacheKey = CacheKeys.skills(userId);
 				
 				when(myRedisTemplate.get(eq(cacheKey), any(TypeReference.class))).thenReturn(null);
 				when(coreSkillsMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(mockDbList);
 				
-				// 執行
-				BaseVo<List<CoreSkills>> result = skillService.getCoreSkills(userId);
+				BaseVo<List<CoreSkillVo>> result = coreSkillsService.getCoreSkills(userId);
 				
-				// 驗證
 				assertThat(result.getIsSuccess()).isTrue();
 				assertThat(result.getData()).hasSize(2);
+				assertThat(result.getData().get(0).getId()).isEqualTo(1);
+				assertThat(result.getData().get(0).getSummary()).isEqualTo("Frontend");
+				assertThat(result.getData().get(0).getDetails()).isEqualTo("React, TypeScript");
+				assertThat(result.getData().get(0).getCreateTime()).isEqualTo(createTime1);
+				assertThat(result.getData().get(0).getUpdateTime()).isEqualTo(updateTime1);
+				assertThat(result.getData().get(1).getId()).isEqualTo(2);
+				assertThat(result.getData().get(1).getSummary()).isEqualTo("Backend");
 				
-				// 驗證：查了資料庫，並寫入了快取
+				ArgumentCaptor<Object> cacheValueCaptor = ArgumentCaptor.forClass(Object.class);
 				verify(coreSkillsMapper, times(1)).selectList(any(LambdaQueryWrapper.class));
-				verify(myRedisTemplate, times(1)).set(eq(cacheKey), eq(mockDbList), anyLong(), any());
+				verify(myRedisTemplate, times(1)).set(eq(cacheKey), cacheValueCaptor.capture(), anyLong(), any());
+				assertThat(cacheValueCaptor.getValue()).isInstanceOf(List.class);
+				assertThat((List<?>) cacheValueCaptor.getValue()).hasSize(2)
+								.allSatisfy(item -> assertThat(item).isInstanceOf(CoreSkillVo.class));
 		}
 		
 		@Test
 		void getCoreSkills_shouldReturnEmptyList_whenUserHasNoSkills() {
-				// 準備：Redis 回傳 null，資料庫回傳空列表
 				String cacheKey = CacheKeys.skills(userId);
 				
 				when(myRedisTemplate.get(eq(cacheKey), any(TypeReference.class))).thenReturn(null);
 				when(coreSkillsMapper.selectList(any(LambdaQueryWrapper.class))).thenReturn(new ArrayList<>());
 				
-				// 執行
-				BaseVo<List<CoreSkills>> result = skillService.getCoreSkills(userId);
+				BaseVo<List<CoreSkillVo>> result = coreSkillsService.getCoreSkills(userId);
 				
-				// 驗證
 				assertThat(result.getIsSuccess()).isTrue();
 				assertThat(result.getData()).isEmpty();
 				
-				// 驗證：仍然寫入了空列表到快取（避免重複查詢資料庫）
 				verify(myRedisTemplate, times(1)).set(eq(cacheKey), any(List.class), anyLong(), any());
 		}
 		
@@ -138,7 +157,7 @@ class SkillServiceTest {
 				when(coreSkillsMapper.insert(any(CoreSkills.class))).thenReturn(1);
 				
 				// 執行
-				BaseVo<Void> result = skillService.addSkill(dto, userId);
+				BaseVo<Void> result = coreSkillsService.addSkill(dto, userId);
 				
 				// 驗證
 				assertThat(result.getIsSuccess()).isTrue();
@@ -161,7 +180,7 @@ class SkillServiceTest {
 				SkillDto dto = createSkillDto("", "React, TypeScript");
 				
 				// 執行 & 驗證
-				assertThatThrownBy(() -> skillService.addSkill(dto, userId))
+				assertThatThrownBy(() -> coreSkillsService.addSkill(dto, userId))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("參數缺失");
 				
@@ -176,7 +195,7 @@ class SkillServiceTest {
 				SkillDto dto = createSkillDto("Frontend", "");
 				
 				// 執行 & 驗證
-				assertThatThrownBy(() -> skillService.addSkill(dto, userId))
+				assertThatThrownBy(() -> coreSkillsService.addSkill(dto, userId))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("參數缺失");
 				
@@ -187,7 +206,7 @@ class SkillServiceTest {
 		@Test
 		void addSkill_shouldThrowException_whenDtoIsNull() {
 				// 執行 & 驗證
-				assertThatThrownBy(() -> skillService.addSkill(null, userId))
+				assertThatThrownBy(() -> coreSkillsService.addSkill(null, userId))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("參數缺失");
 				
@@ -203,7 +222,7 @@ class SkillServiceTest {
 				when(coreSkillsMapper.insert(any(CoreSkills.class))).thenReturn(0);
 				
 				// 執行 & 驗證
-				assertThatThrownBy(() -> skillService.addSkill(dto, userId))
+				assertThatThrownBy(() -> coreSkillsService.addSkill(dto, userId))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("添加失敗");
 				
@@ -224,7 +243,7 @@ class SkillServiceTest {
 				when(coreSkillsMapper.updateById(any(CoreSkills.class))).thenReturn(1);
 				
 				// 執行
-				BaseVo<Void> result = skillService.editSkill(skillId, dto, userId);
+				BaseVo<Void> result = coreSkillsService.editSkill(skillId, dto, userId);
 				
 				// 驗證
 				assertThat(result.getIsSuccess()).isTrue();
@@ -249,7 +268,7 @@ class SkillServiceTest {
 				SkillDto dto = createSkillDto("", "React, TypeScript");
 				
 				// 執行 & 驗證
-				assertThatThrownBy(() -> skillService.editSkill(skillId, dto, userId))
+				assertThatThrownBy(() -> coreSkillsService.editSkill(skillId, dto, userId))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("參數缺失");
 				
@@ -263,7 +282,7 @@ class SkillServiceTest {
 				Integer skillId = 1;
 				SkillDto dto = createSkillDto("Frontend", "");
 				
-				assertThatThrownBy(() -> skillService.editSkill(skillId, dto, userId))
+				assertThatThrownBy(() -> coreSkillsService.editSkill(skillId, dto, userId))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("參數缺失");
 				
@@ -280,7 +299,7 @@ class SkillServiceTest {
 				when(coreSkillsMapper.updateById(any(CoreSkills.class))).thenReturn(0);
 				
 				// 執行 & 驗證
-				assertThatThrownBy(() -> skillService.editSkill(skillId, dto, userId))
+				assertThatThrownBy(() -> coreSkillsService.editSkill(skillId, dto, userId))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("修改失敗");
 				
@@ -300,7 +319,7 @@ class SkillServiceTest {
 				when(coreSkillsMapper.delete(any(LambdaQueryWrapper.class))).thenReturn(1);
 				
 				// 執行
-				BaseVo<Void> result = skillService.deleteSkill(skillId, userId);
+				BaseVo<Void> result = coreSkillsService.deleteSkill(skillId, userId);
 				
 				// 驗證
 				assertThat(result.getIsSuccess()).isTrue();
@@ -324,7 +343,7 @@ class SkillServiceTest {
 				when(coreSkillsMapper.delete(any(LambdaQueryWrapper.class))).thenReturn(0);
 				
 				// 執行 & 驗證
-				assertThatThrownBy(() -> skillService.deleteSkill(skillId, userId))
+				assertThatThrownBy(() -> coreSkillsService.deleteSkill(skillId, userId))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("刪除失敗");
 				

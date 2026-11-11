@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.felixsiu.resume.model.dto.AboutDto;
 import com.felixsiu.resume.model.entity.About;
+import com.felixsiu.resume.model.vo.AboutVo;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.respository.AboutMapper;
 import com.felixsiu.resume.utils.CacheKeys;
@@ -29,11 +30,11 @@ public class AboutService {
 		/**
 		 * 獲取關於我
 		 */
-		public BaseVo<List<About>> getAboutMe(String userId) {
+		public BaseVo<List<AboutVo>> getAboutMe(String userId) {
 				String cacheKey = CacheKeys.about(userId);
 				
 				// 先從 Redis 查
-				List<About> cached = myRedisTemplate.get(cacheKey, new TypeReference<List<About>>() {
+				List<AboutVo> cached = myRedisTemplate.get(cacheKey, new TypeReference<List<AboutVo>>() {
 				});
 				if (cached != null) {
 						System.out.println("✅ 命中缓存！");
@@ -47,10 +48,19 @@ public class AboutService {
 				lambdaQueryWrapper.eq(About::getUserId, userId);
 				List<About> aboutMeList = aboutMapper.selectList(lambdaQueryWrapper);
 				
-				// 3. 寫入緩存
-				myRedisTemplate.set(cacheKey, aboutMeList, CACHE_TTL, CACHE_TTL_UNIT);
+				List<AboutVo> aboutVoList = aboutMeList.stream().map(e -> {
+						AboutVo vo = new AboutVo();
+						vo.setId(e.getId());
+						vo.setParagraph(e.getParagraph());
+						vo.setCreateTime(e.getCreateTime());
+						vo.setUpdateTime(e.getUpdateTime());
+						return vo;
+				}).toList();
 				
-				return BaseVo.success(aboutMeList);
+				// 3. 寫入緩存
+				myRedisTemplate.set(cacheKey, aboutVoList, CACHE_TTL, CACHE_TTL_UNIT);
+				
+				return BaseVo.success(aboutVoList);
 		}
 		
 		/**

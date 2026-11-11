@@ -2,7 +2,7 @@ package com.felixsiu.resume.controller;
 
 import com.felixsiu.resume.annotation.StandardApiResponses;
 import com.felixsiu.resume.model.dto.AboutDto;
-import com.felixsiu.resume.model.entity.About;
+import com.felixsiu.resume.model.vo.AboutVo;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.service.AboutService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,7 +31,7 @@ public class AboutController {
 						description = "獲取當前登入用戶的關於我資訊列表"
 		)
 		@StandardApiResponses
-		public BaseVo<List<About>> about(
+		public BaseVo<List<AboutVo>> about(
 						@Parameter(hidden = true)
 						@RequestAttribute("userId") String userId
 		) {
