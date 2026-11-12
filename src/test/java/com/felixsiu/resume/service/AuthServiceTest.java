@@ -74,10 +74,15 @@ class AuthServiceTest {
 		}
 		
 		private User createUser(String id, String username, String encodedPassword) {
+				return createUser(id, username, encodedPassword, null);
+		}
+		
+		private User createUser(String id, String username, String encodedPassword, LocalDateTime deletedAt) {
 				User user = new User();
 				user.setId(id);
 				user.setUsername(username);
 				user.setPassword(encodedPassword);
+				user.setDeletedAt(deletedAt);
 				return user;
 		}
 		
@@ -85,6 +90,11 @@ class AuthServiceTest {
 				when(cookieProperties.getNameRefresh()).thenReturn("REFRESH_TOKEN");
 				when(httpServletRequest.getCookies())
 								.thenReturn(new Cookie[]{new Cookie("REFRESH_TOKEN", rawRefreshToken)});
+		}
+		
+		private void stubActiveUser(String userId, String username) {
+				when(userMapper.selectOne(any(LambdaQueryWrapper.class)))
+								.thenReturn(createUser(userId, username, "encoded"));
 		}
 		
 		private RefreshToken createRefreshToken(
@@ -277,6 +287,23 @@ class AuthServiceTest {
 								.hasMessageContaining("username 或 password錯誤");
 		}
 		
+		@Test
+		void login_shouldThrowException_whenUserSoftDeleted() {
+				LoginDto dto = createLoginDto("felix", "password123", "ABC123", false);
+				User deletedUser = createUser("uuid-123", "felix", "encoded_password", LocalDateTime.now().minusDays(1));
+				
+				when(httpSession.getAttribute("captcha")).thenReturn("ABC123");
+				when(userMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(deletedUser);
+				
+				assertThatThrownBy(() -> authService.login(dto, httpSession, httpServletResponse))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("username 或 password錯誤");
+				
+				verify(passwordEncoder, never()).matches(anyString(), anyString());
+				verify(refreshTokenService, never()).insert(any());
+				verify(cookieService, never()).writeTokenToCookie(any(), any(), any(), any(), any(), any(), any());
+		}
+		
 		// ============================================================
 		// 3. createCaptcha 測試
 		// ============================================================
@@ -380,6 +407,7 @@ class AuthServiceTest {
 								true, true, LocalDateTime.now().plusDays(1)
 				);
 				when(refreshTokenService.selectOneByHash(Sha256Hex.toHexString(raw))).thenReturn(existing);
+				stubActiveUser(userId, "felix");
 				when(refreshTokenService.revokeAllByUserId(userId)).thenReturn(1);
 				
 				BaseVo<LoginVo> result = authService.refreshToken(httpServletRequest, httpServletResponse);
@@ -395,19 +423,63 @@ class AuthServiceTest {
 		@Test
 		void refresh_shouldFail401_whenExpiresAtPassed() throws NoSuchAlgorithmException {
 				String raw = "raw-refresh-expired";
+				String userId = "uuid-123";
 				stubRefreshCookie(raw);
 				
 				RefreshToken existing = createRefreshToken(
-								1, "uuid-123", "felix", Sha256Hex.toHexString(raw),
+								1, userId, "felix", Sha256Hex.toHexString(raw),
 								false, true, LocalDateTime.now().minusHours(1)
 				);
 				when(refreshTokenService.selectOneByHash(Sha256Hex.toHexString(raw))).thenReturn(existing);
+				stubActiveUser(userId, "felix");
 				
 				BaseVo<LoginVo> result = authService.refreshToken(httpServletRequest, httpServletResponse);
 				
 				assertThat(result.getIsSuccess()).isFalse();
 				assertThat(result.getMessage()).contains("已過期");
 				verify(httpServletResponse).setStatus(401);
+				verify(refreshTokenService, never()).insert(any());
+				verify(cookieService, never()).writeTokenToCookie(any(), any(), any(), any(), any(), any(), any());
+		}
+		
+		@Test
+		void refresh_shouldThrow_whenUserNotFound() throws NoSuchAlgorithmException {
+				String raw = "raw-refresh-no-user";
+				stubRefreshCookie(raw);
+				
+				RefreshToken existing = createRefreshToken(
+								1, "uuid-123", "felix", Sha256Hex.toHexString(raw),
+								false, true, LocalDateTime.now().plusDays(1)
+				);
+				when(refreshTokenService.selectOneByHash(Sha256Hex.toHexString(raw))).thenReturn(existing);
+				when(userMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+				
+				assertThatThrownBy(() -> authService.refreshToken(httpServletRequest, httpServletResponse))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("找不到該用戶");
+				
+				verify(refreshTokenService, never()).insert(any());
+				verify(cookieService, never()).writeTokenToCookie(any(), any(), any(), any(), any(), any(), any());
+		}
+		
+		@Test
+		void refresh_shouldThrow_whenUserSoftDeleted() throws NoSuchAlgorithmException {
+				String raw = "raw-refresh-deleted-user";
+				String userId = "uuid-123";
+				stubRefreshCookie(raw);
+				
+				RefreshToken existing = createRefreshToken(
+								1, userId, "felix", Sha256Hex.toHexString(raw),
+								false, true, LocalDateTime.now().plusDays(1)
+				);
+				when(refreshTokenService.selectOneByHash(Sha256Hex.toHexString(raw))).thenReturn(existing);
+				when(userMapper.selectOne(any(LambdaQueryWrapper.class)))
+								.thenReturn(createUser(userId, "felix", "encoded", LocalDateTime.now().minusDays(1)));
+				
+				assertThatThrownBy(() -> authService.refreshToken(httpServletRequest, httpServletResponse))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("找不到該用戶");
+				
 				verify(refreshTokenService, never()).insert(any());
 				verify(cookieService, never()).writeTokenToCookie(any(), any(), any(), any(), any(), any(), any());
 		}
@@ -428,6 +500,7 @@ class AuthServiceTest {
 								false, true, expiresAt
 				);
 				when(refreshTokenService.selectOneByHash(Sha256Hex.toHexString(raw))).thenReturn(existing);
+				stubActiveUser(userId, userName);
 				when(refreshTokenService.insert(any())).thenAnswer(invocation -> {
 						RefreshToken token = invocation.getArgument(0);
 						token.setId(newId);
@@ -480,6 +553,7 @@ class AuthServiceTest {
 								false, false, expiresAt
 				);
 				when(refreshTokenService.selectOneByHash(Sha256Hex.toHexString(raw))).thenReturn(existing);
+				stubActiveUser(userId, "felix");
 				when(refreshTokenService.insert(any())).thenAnswer(invocation -> {
 						RefreshToken token = invocation.getArgument(0);
 						token.setId(newId);
@@ -516,6 +590,7 @@ class AuthServiceTest {
 								false, true, LocalDateTime.now().plusDays(1)
 				);
 				when(refreshTokenService.selectOneByHash(Sha256Hex.toHexString(raw))).thenReturn(existing);
+				stubActiveUser(userId, "felix");
 				when(refreshTokenService.insert(any())).thenAnswer(invocation -> {
 						RefreshToken token = invocation.getArgument(0);
 						token.setId(newId);
@@ -536,13 +611,15 @@ class AuthServiceTest {
 		@Test
 		void refresh_shouldThrow_whenInsertFails() throws NoSuchAlgorithmException {
 				String raw = "raw-refresh-insert-fail";
+				String userId = "uuid-123";
 				stubRefreshCookie(raw);
 				
 				RefreshToken existing = createRefreshToken(
-								1, "uuid-123", "felix", Sha256Hex.toHexString(raw),
+								1, userId, "felix", Sha256Hex.toHexString(raw),
 								false, true, LocalDateTime.now().plusDays(1)
 				);
 				when(refreshTokenService.selectOneByHash(Sha256Hex.toHexString(raw))).thenReturn(existing);
+				stubActiveUser(userId, "felix");
 				when(refreshTokenService.insert(any())).thenReturn(false);
 				
 				assertThatThrownBy(() -> authService.refreshToken(httpServletRequest, httpServletResponse))
@@ -551,5 +628,47 @@ class AuthServiceTest {
 				
 				verify(refreshTokenService, never()).revokeIfActive(any(), any());
 				verify(cookieService, never()).writeTokenToCookie(any(), any(), any(), any(), any(), any(), any());
+		}
+		
+		// ============================================================
+		// 5. getUserId 測試
+		// ============================================================
+		
+		@Test
+		void getUserId_shouldReturnId_whenUserActive() {
+				User user = createUser("uuid-123", "felix", "encoded");
+				when(userMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(user);
+				
+				String result = authService.getUserId("felix");
+				
+				assertThat(result).isEqualTo("uuid-123");
+		}
+		
+		@Test
+		void getUserId_shouldThrow_whenUsernameBlank() {
+				assertThatThrownBy(() -> authService.getUserId("  "))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("請輸入用戶名");
+				
+				verify(userMapper, never()).selectOne(any(LambdaQueryWrapper.class));
+		}
+		
+		@Test
+		void getUserId_shouldThrow_whenUserNotFound() {
+				when(userMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+				
+				assertThatThrownBy(() -> authService.getUserId("unknown"))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("用戶不存在");
+		}
+		
+		@Test
+		void getUserId_shouldThrow_whenUserSoftDeleted() {
+				User deletedUser = createUser("uuid-123", "felix", "encoded", LocalDateTime.now().minusDays(1));
+				when(userMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(deletedUser);
+				
+				assertThatThrownBy(() -> authService.getUserId("felix"))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("用戶不存在");
 		}
 }

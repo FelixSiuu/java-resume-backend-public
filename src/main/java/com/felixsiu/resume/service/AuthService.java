@@ -94,7 +94,7 @@ public class AuthService {
 				
 				User foundUser = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, un));
 				
-				if (foundUser == null) {
+				if (foundUser == null || foundUser.getDeletedAt() != null) {
 						throw new RuntimeException("username 或 password錯誤");
 				}
 				
@@ -177,7 +177,7 @@ public class AuthService {
 				lambdaQueryWrapper.eq(User::getUsername, username);
 				User user = userMapper.selectOne(lambdaQueryWrapper);
 				
-				if (user == null) {
+				if (user == null || user.getDeletedAt() != null) {
 						throw new RuntimeException("用戶不存在");
 				}
 				
@@ -244,6 +244,13 @@ public class AuthService {
 						
 						Boolean isRevoked = existingRefreshToken.getRevoked();
 						String userId = existingRefreshToken.getUserId();
+						
+						User foundUser = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getId, userId));
+						
+						if(foundUser == null || foundUser.getDeletedAt() != null) {
+								throw new RuntimeException("找不到該用戶");
+						}
+						
 						LocalDateTime expiresTime = existingRefreshToken.getExpiresAt();
 						String userName = existingRefreshToken.getUserName();
 						Boolean rememberMe = existingRefreshToken.getRememberMe();

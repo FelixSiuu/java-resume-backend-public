@@ -44,13 +44,6 @@ public class AuthInterceptor implements HandlerInterceptor {
 						}
 				}
 				
-				if (token == null || token.isBlank()) {
-						String bearer = request.getHeader("Authorization");
-						if(bearer != null && bearer.startsWith("Bearer ")) {
-								token = bearer.substring(7);
-						}
-				}
-				
 				if(token == null || !jwtUtil.verifyToken(token)){
 						response.setStatus(401);
 						return false;

@@ -14,7 +14,7 @@ public class KaptchaConfig {
 				DefaultKaptcha defaultKaptcha = new DefaultKaptcha();
 				Properties properties = new Properties();
 				properties.setProperty("kaptcha.border", "no");
-				properties.setProperty("kaptcha.image.width", "100");
+				properties.setProperty("kaptcha.image.width", "200");
 				properties.setProperty("kaptcha.image.height", "50");
 				Config config = new Config(properties);
 				defaultKaptcha.setConfig(config);

@@ -23,4 +23,5 @@ public class User {
 		private LocalDateTime createTime;
 		@TableField(value = "update_time", updateStrategy = FieldStrategy.NEVER, insertStrategy = FieldStrategy.NEVER)
 		private LocalDateTime updateTime;
+		private LocalDateTime deletedAt;
 }
