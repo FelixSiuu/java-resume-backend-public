@@ -4,11 +4,14 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.felixsiu.resume.config.CookieProperties;
 import com.felixsiu.resume.model.dto.LoginDto;
 import com.felixsiu.resume.model.dto.RegisterDto;
+import com.felixsiu.resume.model.dto.VerifyEmailDto;
+import com.felixsiu.resume.model.entity.EmailVerificationToken;
 import com.felixsiu.resume.model.entity.RefreshToken;
 import com.felixsiu.resume.model.entity.User;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.model.vo.LoginVo;
 import com.felixsiu.resume.respository.UserMapper;
+import com.felixsiu.resume.service.account.AccountBaseService;
 import com.felixsiu.resume.utils.JwtUtil;
 import com.felixsiu.resume.utils.Sha256Hex;
 import com.google.code.kaptcha.impl.DefaultKaptcha;
@@ -58,6 +61,12 @@ class AuthServiceTest {
 		private RefreshTokenService refreshTokenService;
 		@Mock
 		private CookieService cookieService;
+		@Mock
+		private EmailVerificationTokenService emailVerificationTokenService;
+		@Mock
+		private AccountBaseService accountBaseService;
+		@Mock
+		private AccountService accountService;
 		@InjectMocks
 		private AuthService authService;
 		
@@ -65,8 +74,8 @@ class AuthServiceTest {
 		// 測試數據工廠
 		// ============================================================
 		
-		private RegisterDto createRegisterDto(String username, String password) {
-				return new RegisterDto(username, password);
+		private RegisterDto createRegisterDto(String username, String password, String email) {
+				return new RegisterDto(username, password, email);
 		}
 		
 		private LoginDto createLoginDto(String username, String password, String captcha, Boolean rememberMe) {
@@ -122,62 +131,97 @@ class AuthServiceTest {
 		// ============================================================
 		
 		@Test
-		void register_shouldSuccess_whenUsernameNotExists() {
-				// 準備
-				RegisterDto dto = createRegisterDto("felix", "password123");
+		void register_shouldSuccess_whenUsernameAndEmailAvailable() {
+				RegisterDto dto = createRegisterDto("felix", "password123", "felix@example.com");
 				String encodedPassword = "encoded_password_123";
+				String userId = "uuid-new";
 				
+				when(accountBaseService.countEmail("felix@example.com")).thenReturn(0L);
 				when(userMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
 				when(passwordEncoder.encode("password123")).thenReturn(encodedPassword);
-				when(userMapper.insert(any(User.class))).thenReturn(1);
+				when(userMapper.insert(any(User.class))).thenAnswer(invocation -> {
+						User user = invocation.getArgument(0);
+						user.setId(userId);
+						return 1;
+				});
 				
-				// 執行
 				BaseVo<Void> result = authService.register(dto);
 				
-				// 驗證
 				assertThat(result.getIsSuccess()).isTrue();
-				
-				// 驗證密碼被編碼
 				verify(passwordEncoder).encode("password123");
 				
-				// 驗證 User 被正確儲存
 				ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
 				verify(userMapper).insert(captor.capture());
 				User captured = captor.getValue();
 				assertThat(captured.getUsername()).isEqualTo("felix");
 				assertThat(captured.getPassword()).isEqualTo(encodedPassword);
+				assertThat(captured.getEmail()).isEqualTo("felix@example.com");
+				assertThat(captured.getEmailVerifiedAt()).isNull();
+				verify(accountService).sendVerifyTokenEmail("felix@example.com", userId);
+		}
+		
+		@Test
+		void register_shouldThrow_whenEmailTaken() {
+				RegisterDto dto = createRegisterDto("felix", "password123", "taken@example.com");
+				
+				when(accountBaseService.countEmail("taken@example.com")).thenReturn(1L);
+				
+				assertThatThrownBy(() -> authService.register(dto))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("該電子郵箱已被佔用");
+				
+				verify(userMapper, never()).exists(any(LambdaQueryWrapper.class));
+				verify(userMapper, never()).insert(any(User.class));
+				verify(passwordEncoder, never()).encode(anyString());
+				verify(accountService, never()).sendVerifyTokenEmail(anyString(), anyString());
 		}
 		
 		@Test
 		void register_shouldThrowException_whenUsernameAlreadyExists() {
-				// 準備：用戶已存在
-				RegisterDto dto = createRegisterDto("felix", "password123");
+				RegisterDto dto = createRegisterDto("felix", "password123", "felix@example.com");
 				
+				when(accountBaseService.countEmail("felix@example.com")).thenReturn(0L);
 				when(userMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(true);
 				
-				// 執行 & 驗證
 				assertThatThrownBy(() -> authService.register(dto))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("該用戶已存在");
 				
-				// 驗證：不應該進行插入
 				verify(userMapper, never()).insert(any(User.class));
 				verify(passwordEncoder, never()).encode(anyString());
+				verify(accountService, never()).sendVerifyTokenEmail(anyString(), anyString());
 		}
 		
 		@Test
 		void register_shouldThrowException_whenInsertFails() {
-				// 準備：插入失敗
-				RegisterDto dto = createRegisterDto("felix", "password123");
+				RegisterDto dto = createRegisterDto("felix", "password123", "felix@example.com");
 				
+				when(accountBaseService.countEmail("felix@example.com")).thenReturn(0L);
 				when(userMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
 				when(passwordEncoder.encode(anyString())).thenReturn("encoded");
 				when(userMapper.insert(any(User.class))).thenReturn(0);
 				
-				// 執行 & 驗證
 				assertThatThrownBy(() -> authService.register(dto))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("創建帳號失敗");
+				
+				verify(accountService, never()).sendVerifyTokenEmail(anyString(), anyString());
+		}
+		
+		@Test
+		void register_shouldThrow_whenInsertSucceedsButUserIdMissing() {
+				RegisterDto dto = createRegisterDto("felix", "password123", "felix@example.com");
+				
+				when(accountBaseService.countEmail("felix@example.com")).thenReturn(0L);
+				when(userMapper.exists(any(LambdaQueryWrapper.class))).thenReturn(false);
+				when(passwordEncoder.encode(anyString())).thenReturn("encoded");
+				when(userMapper.insert(any(User.class))).thenReturn(1); // id 未回填
+				
+				assertThatThrownBy(() -> authService.register(dto))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("創建帳號失敗");
+				
+				verify(accountService, never()).sendVerifyTokenEmail(anyString(), anyString());
 		}
 		
 		// ============================================================
@@ -670,5 +714,182 @@ class AuthServiceTest {
 				assertThatThrownBy(() -> authService.getUserId("felix"))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("用戶不存在");
+		}
+		
+		// ============================================================
+		// verifyEmail
+		// ============================================================
+		
+		@Test
+		void verifyEmail_shouldSuccess_whenTokenMatchesCurrentEmail() throws NoSuchAlgorithmException {
+				String userId = "uuid-123";
+				String email = "felix@example.com";
+				String rawToken = "raw-verify-token";
+				String tokenHash = Sha256Hex.toHexString(rawToken);
+				
+				EmailVerificationToken token = new EmailVerificationToken();
+				token.setTokenHash(tokenHash);
+				token.setUserId(userId);
+				token.setEmail(email);
+				
+				User user = createUser(userId, "felix", "encoded");
+				user.setEmail(email);
+				
+				when(emailVerificationTokenService.findByValidHash(tokenHash)).thenReturn(token);
+				when(accountBaseService.selectByPK(userId)).thenReturn(user);
+				when(emailVerificationTokenService.updateHashUsedAt(tokenHash)).thenReturn(true);
+				when(accountBaseService.updateEmailByPK(eq(userId), eq(email), any(LocalDateTime.class))).thenReturn(true);
+				
+				BaseVo<Void> result = authService.verifyEmail(new VerifyEmailDto(rawToken));
+				
+				assertThat(result.getIsSuccess()).isTrue();
+				verify(emailVerificationTokenService).updateHashUsedAt(tokenHash);
+				verify(accountBaseService).updateEmailByPK(eq(userId), eq(email), any(LocalDateTime.class));
+		}
+		
+		@Test
+		void verifyEmail_shouldThrow_whenTokenBlank() {
+				assertThatThrownBy(() -> authService.verifyEmail(new VerifyEmailDto("  ")))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("token不能為空");
+				
+				verify(emailVerificationTokenService, never()).findByValidHash(anyString());
+		}
+		
+		@Test
+		void verifyEmail_shouldThrow_whenTokenInvalidOrExpired() throws NoSuchAlgorithmException {
+				String rawToken = "bad-or-expired";
+				String tokenHash = Sha256Hex.toHexString(rawToken);
+				when(emailVerificationTokenService.findByValidHash(tokenHash)).thenReturn(null);
+				
+				assertThatThrownBy(() -> authService.verifyEmail(new VerifyEmailDto(rawToken)))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("token 無效或已失效");
+				
+				verify(accountBaseService, never()).selectByPK(anyString());
+				verify(emailVerificationTokenService, never()).updateHashUsedAt(anyString());
+		}
+		
+		@Test
+		void verifyEmail_shouldThrow_whenUserNotFound() throws NoSuchAlgorithmException {
+				String userId = "uuid-123";
+				String email = "felix@example.com";
+				String rawToken = "raw-verify-token";
+				String tokenHash = Sha256Hex.toHexString(rawToken);
+				
+				EmailVerificationToken token = new EmailVerificationToken();
+				token.setTokenHash(tokenHash);
+				token.setUserId(userId);
+				token.setEmail(email);
+				
+				when(emailVerificationTokenService.findByValidHash(tokenHash)).thenReturn(token);
+				when(accountBaseService.selectByPK(userId)).thenReturn(null);
+				
+				assertThatThrownBy(() -> authService.verifyEmail(new VerifyEmailDto(rawToken)))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("token 無效或已失效");
+				
+				verify(emailVerificationTokenService, never()).updateHashUsedAt(anyString());
+				verify(accountBaseService, never()).updateEmailByPK(anyString(), anyString(), any());
+		}
+		
+		@Test
+		void verifyEmail_shouldThrow_whenTokenEmailMismatchCurrentEmail() throws NoSuchAlgorithmException {
+				String userId = "uuid-123";
+				String rawToken = "raw-old-token";
+				String tokenHash = Sha256Hex.toHexString(rawToken);
+				
+				EmailVerificationToken token = new EmailVerificationToken();
+				token.setTokenHash(tokenHash);
+				token.setUserId(userId);
+				token.setEmail("old@example.com");
+				
+				User user = createUser(userId, "felix", "encoded");
+				user.setEmail("new@example.com");
+				
+				when(emailVerificationTokenService.findByValidHash(tokenHash)).thenReturn(token);
+				when(accountBaseService.selectByPK(userId)).thenReturn(user);
+				
+				assertThatThrownBy(() -> authService.verifyEmail(new VerifyEmailDto(rawToken)))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("token 無效或已失效");
+				
+				verify(emailVerificationTokenService, never()).updateHashUsedAt(anyString());
+				verify(accountBaseService, never()).updateEmailByPK(anyString(), anyString(), any());
+		}
+		
+		@Test
+		void verifyEmail_shouldThrow_whenUserEmailNull() throws NoSuchAlgorithmException {
+				String userId = "uuid-123";
+				String rawToken = "raw-verify-token";
+				String tokenHash = Sha256Hex.toHexString(rawToken);
+				
+				EmailVerificationToken token = new EmailVerificationToken();
+				token.setTokenHash(tokenHash);
+				token.setUserId(userId);
+				token.setEmail("felix@example.com");
+				
+				User user = createUser(userId, "felix", "encoded");
+				user.setEmail(null);
+				
+				when(emailVerificationTokenService.findByValidHash(tokenHash)).thenReturn(token);
+				when(accountBaseService.selectByPK(userId)).thenReturn(user);
+				
+				assertThatThrownBy(() -> authService.verifyEmail(new VerifyEmailDto(rawToken)))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("token 無效或已失效");
+				
+				verify(emailVerificationTokenService, never()).updateHashUsedAt(anyString());
+		}
+		
+		@Test
+		void verifyEmail_shouldThrow_whenMarkUsedFails() throws NoSuchAlgorithmException {
+				String userId = "uuid-123";
+				String email = "felix@example.com";
+				String rawToken = "raw-verify-token";
+				String tokenHash = Sha256Hex.toHexString(rawToken);
+				
+				EmailVerificationToken token = new EmailVerificationToken();
+				token.setTokenHash(tokenHash);
+				token.setUserId(userId);
+				token.setEmail(email);
+				
+				User user = createUser(userId, "felix", "encoded");
+				user.setEmail(email);
+				
+				when(emailVerificationTokenService.findByValidHash(tokenHash)).thenReturn(token);
+				when(accountBaseService.selectByPK(userId)).thenReturn(user);
+				when(emailVerificationTokenService.updateHashUsedAt(tokenHash)).thenReturn(false);
+				
+				assertThatThrownBy(() -> authService.verifyEmail(new VerifyEmailDto(rawToken)))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("驗證電子郵箱出現了錯誤");
+				
+				verify(accountBaseService, never()).updateEmailByPK(anyString(), anyString(), any());
+		}
+		
+		@Test
+		void verifyEmail_shouldThrow_whenUpdateEmailStatusFails() throws NoSuchAlgorithmException {
+				String userId = "uuid-123";
+				String email = "felix@example.com";
+				String rawToken = "raw-verify-token";
+				String tokenHash = Sha256Hex.toHexString(rawToken);
+				
+				EmailVerificationToken token = new EmailVerificationToken();
+				token.setTokenHash(tokenHash);
+				token.setUserId(userId);
+				token.setEmail(email);
+				
+				User user = createUser(userId, "felix", "encoded");
+				user.setEmail(email);
+				
+				when(emailVerificationTokenService.findByValidHash(tokenHash)).thenReturn(token);
+				when(accountBaseService.selectByPK(userId)).thenReturn(user);
+				when(emailVerificationTokenService.updateHashUsedAt(tokenHash)).thenReturn(true);
+				when(accountBaseService.updateEmailByPK(eq(userId), eq(email), any(LocalDateTime.class))).thenReturn(false);
+				
+				assertThatThrownBy(() -> authService.verifyEmail(new VerifyEmailDto(rawToken)))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("更新電子郵箱狀態失敗");
 		}
 }

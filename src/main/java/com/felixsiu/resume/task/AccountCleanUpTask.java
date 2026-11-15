@@ -13,12 +13,13 @@ public class AccountCleanUpTask {
 		private AccountBaseService accountBaseService;
 		
 		/**
-		 * 每月 1 號 00:00:00 執行清理
+		 * 每天凌晨 3 點：硬清軟刪已滿 30 天的帳號
 		 */
-		@Scheduled(cron = "0 0 0 1 * *")
-		public void cleanupAccount(){
-				log.info("Cleaning up accounts");
+		@Scheduled(cron = "0 0 3 * * *")
+		public void cleanupAccount() {
+				log.info("Cleaning up soft-deleted accounts older than {} days",
+								AccountBaseService.ACCOUNT_PURGE_GRACE_DAYS);
 				int deleteCount = accountBaseService.cleanUpDeletedAccount();
-				log.info("Deleted {} accounts", deleteCount);
+				log.info("Hard-deleted {} accounts", deleteCount);
 		}
 }

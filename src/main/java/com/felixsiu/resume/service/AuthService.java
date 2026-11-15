@@ -4,11 +4,14 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.felixsiu.resume.config.CookieProperties;
 import com.felixsiu.resume.model.dto.LoginDto;
 import com.felixsiu.resume.model.dto.RegisterDto;
+import com.felixsiu.resume.model.dto.VerifyEmailDto;
+import com.felixsiu.resume.model.entity.EmailVerificationToken;
 import com.felixsiu.resume.model.entity.RefreshToken;
 import com.felixsiu.resume.model.entity.User;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.model.vo.LoginVo;
 import com.felixsiu.resume.respository.UserMapper;
+import com.felixsiu.resume.service.account.AccountBaseService;
 import com.felixsiu.resume.utils.JwtUtil;
 import com.felixsiu.resume.utils.RefreshTokenUtil;
 import com.felixsiu.resume.utils.Sha256Hex;
@@ -49,6 +52,12 @@ public class AuthService {
 		CookieProperties cookieProperties;
 		@Autowired
 		CookieService cookieService;
+		@Autowired
+		EmailVerificationTokenService emailVerificationTokenService;
+		@Autowired
+		AccountBaseService accountBaseService;
+		@Autowired
+		AccountService accountService;
 		
 		/**
 		 * 註冊
@@ -56,6 +65,13 @@ public class AuthService {
 		public BaseVo<Void> register(RegisterDto registerDto) throws RuntimeException {
 				String un = registerDto.username();
 				String pwd = registerDto.password();
+				String email = registerDto.email();
+				
+				Long thisEmailCount = accountBaseService.countEmail(email);
+				
+				if(thisEmailCount > 0) {
+						throw new RuntimeException("該電子郵箱已被佔用");
+				}
 				
 				LambdaQueryWrapper<User> lambdaQueryWrapper = new LambdaQueryWrapper<>();
 				lambdaQueryWrapper.eq(User::getUsername, un);
@@ -68,12 +84,17 @@ public class AuthService {
 				User newUser = new User();
 				newUser.setUsername(un);
 				newUser.setPassword(passwordEncoder.encode(pwd));
+				newUser.setEmail(email);
 				
 				int res = userMapper.insert(newUser);
 				
-				if (res == 0) {
+				String userId = newUser.getId();
+				
+				if (res == 0 || userId == null) {
 						throw new RuntimeException("創建帳號失敗");
 				}
+				
+				accountService.sendVerifyTokenEmail(email, userId);
 				
 				return BaseVo.success(null);
 		}
@@ -247,7 +268,7 @@ public class AuthService {
 						
 						User foundUser = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getId, userId));
 						
-						if(foundUser == null || foundUser.getDeletedAt() != null) {
+						if (foundUser == null || foundUser.getDeletedAt() != null) {
 								throw new RuntimeException("找不到該用戶");
 						}
 						
@@ -323,5 +344,56 @@ public class AuthService {
 						throw new RuntimeException("refresh token 錯誤");
 				}
 				
+		}
+		
+		/**
+		 * verify email
+		 *
+		 * @param dto email from front end
+		 * @return void
+		 */
+		@Transactional(rollbackFor = Exception.class)
+		public BaseVo<Void> verifyEmail(VerifyEmailDto dto) {
+				String token = dto.token();
+				
+				if (!StringUtils.hasText(token)) {
+						throw new RuntimeException("token不能為空");
+				}
+				
+				try {
+						String tokenHash = Sha256Hex.toHexString(token);
+						
+						EmailVerificationToken validTokenHash = emailVerificationTokenService.findByValidHash(tokenHash);
+						
+						if (validTokenHash == null) {
+								throw new RuntimeException("token 無效或已失效");
+						}
+						
+						String userId = validTokenHash.getUserId();
+						
+						User foundUser = accountBaseService.selectByPK(userId);
+						String email = validTokenHash.getEmail();
+						
+						if (foundUser == null || foundUser.getEmail() == null || !foundUser.getEmail().equals(email)) {
+								throw new RuntimeException("token 無效或已失效");
+						}
+						
+						boolean updateHashUsedAtSuccess = emailVerificationTokenService.updateHashUsedAt(tokenHash);
+						
+						if (!updateHashUsedAtSuccess) {
+								throw new RuntimeException("驗證電子郵箱出現了錯誤");
+						}
+						
+						boolean updateEmailStatusSuccess = accountBaseService.updateEmailByPK(userId, email, LocalDateTime.now());
+						
+						if (!updateEmailStatusSuccess) {
+								throw new RuntimeException("更新電子郵箱狀態失敗");
+						}
+						
+						return BaseVo.success(null);
+						
+				} catch (NoSuchAlgorithmException e) {
+						throw new RuntimeException("token 無效或已失效");
+				}
 		}
 }

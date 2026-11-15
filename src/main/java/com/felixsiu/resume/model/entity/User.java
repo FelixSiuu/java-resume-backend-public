@@ -19,6 +19,8 @@ public class User {
 		private String id;
 		private String username;
 		private String password;
+		private String email;
+		private LocalDateTime emailVerifiedAt;
 		@TableField(value = "create_time", updateStrategy = FieldStrategy.NEVER, insertStrategy = FieldStrategy.NEVER)
 		private LocalDateTime createTime;
 		@TableField(value = "update_time", updateStrategy = FieldStrategy.NEVER, insertStrategy = FieldStrategy.NEVER)

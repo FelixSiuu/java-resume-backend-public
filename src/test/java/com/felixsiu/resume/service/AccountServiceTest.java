@@ -1,15 +1,22 @@
 package com.felixsiu.resume.service;
 
+import com.felixsiu.resume.config.MailProperties;
 import com.felixsiu.resume.model.dto.ChangePasswordDto;
+import com.felixsiu.resume.model.dto.EmailDto;
 import com.felixsiu.resume.model.entity.User;
 import com.felixsiu.resume.model.vo.BaseVo;
+import com.felixsiu.resume.model.vo.EmailVo;
 import com.felixsiu.resume.service.account.AccountBaseService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 import java.time.LocalDateTime;
@@ -30,6 +37,12 @@ class AccountServiceTest {
 		@Mock
 		private RefreshTokenService refreshTokenService;
 		@Mock
+		private EmailVerificationTokenService emailVerificationTokenService;
+		@Mock
+		private MailProperties mailProperties;
+		@Mock
+		private JavaMailSender javaMailSender;
+		@Mock
 		private HttpServletResponse response;
 		@InjectMocks
 		private AccountService accountService;
@@ -40,6 +53,11 @@ class AccountServiceTest {
 				user.setUsername(username);
 				user.setPassword(encodedPassword);
 				return user;
+		}
+		
+		private void stubMailForSend() {
+				when(mailProperties.getFrom()).thenReturn("noreply@example.com");
+				when(mailProperties.getFrontendBaseUrl()).thenReturn("https://admin.example.com");
 		}
 		
 		// ============================================================
@@ -200,5 +218,267 @@ class AccountServiceTest {
 				
 				verify(cookieService, never()).clearTokenCookies(any());
 				verify(refreshTokenService, never()).revokeAllByUserId(anyString());
+		}
+		
+		// ============================================================
+		// updateEmail
+		// ============================================================
+		
+		@Test
+		void updateEmail_shouldThrow_whenUserNotFound() {
+				String userId = "missing";
+				EmailDto dto = new EmailDto("new@example.com");
+				when(accountBaseService.selectByPK(userId)).thenReturn(null);
+				
+				assertThatThrownBy(() -> accountService.updateEmail(userId, dto))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("找不到該用戶");
+				
+				verify(accountBaseService, never()).countEmail(anyString());
+				verify(accountBaseService, never()).updateEmailByPK(anyString(), anyString(), any());
+				verify(emailVerificationTokenService, never()).insert(anyString(), anyString(), anyString());
+				verify(javaMailSender, never()).send(any(SimpleMailMessage.class));
+		}
+		
+		@Test
+		void updateEmail_shouldBindAndSend_whenFirstBind() {
+				String userId = "uuid-123";
+				String email = "new@example.com";
+				User user = createUser(userId, "felix", "encoded");
+				user.setEmail(null);
+				user.setEmailVerifiedAt(null);
+				EmailDto dto = new EmailDto(email);
+				
+				when(accountBaseService.selectByPK(userId)).thenReturn(user);
+				when(accountBaseService.countEmail(email)).thenReturn(0L);
+				when(accountBaseService.updateEmailByPK(userId, email, null)).thenReturn(true);
+				when(emailVerificationTokenService.revokeUnusedByUserId(userId)).thenReturn(0);
+				when(emailVerificationTokenService.insert(anyString(), eq(email), eq(userId))).thenReturn(true);
+				stubMailForSend();
+				
+				BaseVo<EmailVo> result = accountService.updateEmail(userId, dto);
+				
+				assertThat(result.getIsSuccess()).isTrue();
+				assertThat(result.getData().getEmail()).isEqualTo(email);
+				assertThat(result.getData().getVerified()).isFalse();
+				assertThat(result.getData().getNextStepMessage()).isNotBlank();
+				verify(accountBaseService).updateEmailByPK(userId, email, null);
+				
+				InOrder inOrder = inOrder(emailVerificationTokenService, javaMailSender);
+				inOrder.verify(emailVerificationTokenService).revokeUnusedByUserId(userId);
+				inOrder.verify(emailVerificationTokenService).insert(anyString(), eq(email), eq(userId));
+				inOrder.verify(javaMailSender).send(any(SimpleMailMessage.class));
+				
+				ArgumentCaptor<SimpleMailMessage> mailCaptor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+				verify(javaMailSender).send(mailCaptor.capture());
+				assertThat(mailCaptor.getValue().getTo()).containsExactly(email);
+				assertThat(mailCaptor.getValue().getFrom()).isEqualTo("noreply@example.com");
+		}
+		
+		@Test
+		void updateEmail_shouldResend_whenSameUnverifiedEmail() {
+				String userId = "uuid-123";
+				String email = "pending@example.com";
+				User user = createUser(userId, "felix", "encoded");
+				user.setEmail(email);
+				user.setEmailVerifiedAt(null);
+				EmailDto dto = new EmailDto(email);
+				
+				when(accountBaseService.selectByPK(userId)).thenReturn(user);
+				when(emailVerificationTokenService.revokeUnusedByUserId(userId)).thenReturn(1);
+				when(emailVerificationTokenService.insert(anyString(), eq(email), eq(userId))).thenReturn(true);
+				stubMailForSend();
+				
+				BaseVo<EmailVo> result = accountService.updateEmail(userId, dto);
+				
+				assertThat(result.getIsSuccess()).isTrue();
+				assertThat(result.getData().getEmail()).isEqualTo(email);
+				assertThat(result.getData().getVerified()).isFalse();
+				verify(accountBaseService, never()).countEmail(anyString());
+				verify(accountBaseService, never()).updateEmailByPK(anyString(), anyString(), any());
+				
+				InOrder inOrder = inOrder(emailVerificationTokenService);
+				inOrder.verify(emailVerificationTokenService).revokeUnusedByUserId(userId);
+				inOrder.verify(emailVerificationTokenService).insert(anyString(), eq(email), eq(userId));
+				verify(javaMailSender).send(any(SimpleMailMessage.class));
+		}
+		
+		@Test
+		void updateEmail_shouldThrow_whenSameEmailAlreadyVerified() {
+				String userId = "uuid-123";
+				String email = "verified@example.com";
+				User user = createUser(userId, "felix", "encoded");
+				user.setEmail(email);
+				user.setEmailVerifiedAt(LocalDateTime.now());
+				EmailDto dto = new EmailDto(email);
+				
+				when(accountBaseService.selectByPK(userId)).thenReturn(user);
+				
+				assertThatThrownBy(() -> accountService.updateEmail(userId, dto))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("已驗證");
+				
+				verify(accountBaseService, never()).countEmail(anyString());
+				verify(accountBaseService, never()).updateEmailByPK(anyString(), anyString(), any());
+				verify(emailVerificationTokenService, never()).insert(anyString(), anyString(), anyString());
+				verify(javaMailSender, never()).send(any(SimpleMailMessage.class));
+		}
+		
+		@Test
+		void updateEmail_shouldThrow_whenEmailTaken() {
+				String userId = "uuid-123";
+				String email = "taken@example.com";
+				User user = createUser(userId, "felix", "encoded");
+				user.setEmail(null);
+				EmailDto dto = new EmailDto(email);
+				
+				when(accountBaseService.selectByPK(userId)).thenReturn(user);
+				when(accountBaseService.countEmail(email)).thenReturn(1L);
+				
+				assertThatThrownBy(() -> accountService.updateEmail(userId, dto))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("已被佔用");
+				
+				verify(accountBaseService, never()).updateEmailByPK(anyString(), anyString(), any());
+				verify(emailVerificationTokenService, never()).insert(anyString(), anyString(), anyString());
+				verify(javaMailSender, never()).send(any(SimpleMailMessage.class));
+		}
+		
+		@Test
+		void updateEmail_shouldThrow_whenUpdateFails() {
+				String userId = "uuid-123";
+				String email = "new@example.com";
+				User user = createUser(userId, "felix", "encoded");
+				user.setEmail(null);
+				EmailDto dto = new EmailDto(email);
+				
+				when(accountBaseService.selectByPK(userId)).thenReturn(user);
+				when(accountBaseService.countEmail(email)).thenReturn(0L);
+				when(accountBaseService.updateEmailByPK(userId, email, null)).thenReturn(false);
+				
+				assertThatThrownBy(() -> accountService.updateEmail(userId, dto))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("更新電子郵箱失敗");
+				
+				verify(emailVerificationTokenService, never()).insert(anyString(), anyString(), anyString());
+				verify(javaMailSender, never()).send(any(SimpleMailMessage.class));
+		}
+		
+		@Test
+		void updateEmail_shouldThrow_whenTokenInsertFails() {
+				String userId = "uuid-123";
+				String email = "new@example.com";
+				User user = createUser(userId, "felix", "encoded");
+				user.setEmail(null);
+				EmailDto dto = new EmailDto(email);
+				
+				when(accountBaseService.selectByPK(userId)).thenReturn(user);
+				when(accountBaseService.countEmail(email)).thenReturn(0L);
+				when(accountBaseService.updateEmailByPK(userId, email, null)).thenReturn(true);
+				when(emailVerificationTokenService.insert(anyString(), eq(email), eq(userId))).thenReturn(false);
+				
+				assertThatThrownBy(() -> accountService.updateEmail(userId, dto))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("獲取電子郵箱驗證碼失敗");
+				
+				verify(javaMailSender, never()).send(any(SimpleMailMessage.class));
+		}
+		
+		@Test
+		void updateEmail_shouldChangeAndSend_whenDifferentUnverifiedEmail() {
+				String userId = "uuid-123";
+				String oldEmail = "old@example.com";
+				String newEmail = "new@example.com";
+				User user = createUser(userId, "felix", "encoded");
+				user.setEmail(oldEmail);
+				user.setEmailVerifiedAt(null);
+				EmailDto dto = new EmailDto(newEmail);
+				
+				when(accountBaseService.selectByPK(userId)).thenReturn(user);
+				when(accountBaseService.countEmail(newEmail)).thenReturn(0L);
+				when(accountBaseService.updateEmailByPK(userId, newEmail, null)).thenReturn(true);
+				when(emailVerificationTokenService.revokeUnusedByUserId(userId)).thenReturn(1);
+				when(emailVerificationTokenService.insert(anyString(), eq(newEmail), eq(userId))).thenReturn(true);
+				stubMailForSend();
+				
+				BaseVo<EmailVo> result = accountService.updateEmail(userId, dto);
+				
+				assertThat(result.getIsSuccess()).isTrue();
+				assertThat(result.getData().getEmail()).isEqualTo(newEmail);
+				assertThat(result.getData().getVerified()).isFalse();
+				verify(accountBaseService).updateEmailByPK(userId, newEmail, null);
+				verify(emailVerificationTokenService).revokeUnusedByUserId(userId);
+				verify(emailVerificationTokenService).insert(anyString(), eq(newEmail), eq(userId));
+				verify(javaMailSender).send(any(SimpleMailMessage.class));
+		}
+		
+		// ============================================================
+		// queryEmailStatus
+		// ============================================================
+		
+		@Test
+		void queryEmailStatus_shouldThrow_whenUserNotFound() {
+				String userId = "missing";
+				when(accountBaseService.selectByPK(userId)).thenReturn(null);
+				
+				assertThatThrownBy(() -> accountService.queryEmailStatus(userId))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("找不到該用戶");
+		}
+		
+		@Test
+		void queryEmailStatus_shouldReturnBindHint_whenEmailNull() {
+				String userId = "uuid-123";
+				User user = createUser(userId, "felix", "encoded");
+				user.setEmail(null);
+				user.setEmailVerifiedAt(null);
+				
+				when(accountBaseService.selectByPK(userId)).thenReturn(user);
+				
+				BaseVo<EmailVo> result = accountService.queryEmailStatus(userId);
+				
+				assertThat(result.getIsSuccess()).isTrue();
+				assertThat(result.getData().getEmail()).isNull();
+				assertThat(result.getData().getVerified()).isFalse();
+				assertThat(result.getData().getNextStepMessage())
+								.contains("please bind your email address");
+		}
+		
+		@Test
+		void queryEmailStatus_shouldReturnVerifyHint_whenEmailPending() {
+				String userId = "uuid-123";
+				String email = "pending@example.com";
+				User user = createUser(userId, "felix", "encoded");
+				user.setEmail(email);
+				user.setEmailVerifiedAt(null);
+				
+				when(accountBaseService.selectByPK(userId)).thenReturn(user);
+				
+				BaseVo<EmailVo> result = accountService.queryEmailStatus(userId);
+				
+				assertThat(result.getIsSuccess()).isTrue();
+				assertThat(result.getData().getEmail()).isEqualTo(email);
+				assertThat(result.getData().getVerified()).isFalse();
+				assertThat(result.getData().getNextStepMessage())
+								.contains("Please verify your email address");
+		}
+		
+		@Test
+		void queryEmailStatus_shouldReturnVerified_whenEmailVerified() {
+				String userId = "uuid-123";
+				String email = "verified@example.com";
+				User user = createUser(userId, "felix", "encoded");
+				user.setEmail(email);
+				user.setEmailVerifiedAt(LocalDateTime.now());
+				
+				when(accountBaseService.selectByPK(userId)).thenReturn(user);
+				
+				BaseVo<EmailVo> result = accountService.queryEmailStatus(userId);
+				
+				assertThat(result.getIsSuccess()).isTrue();
+				assertThat(result.getData().getEmail()).isEqualTo(email);
+				assertThat(result.getData().getVerified()).isTrue();
+				assertThat(result.getData().getNextStepMessage())
+								.contains("already verified");
 		}
 }

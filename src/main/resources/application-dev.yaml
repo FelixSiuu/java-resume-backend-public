@@ -46,6 +46,16 @@ spring:
     multipart:
       max-file-size: 2MB
       max-request-size: 2MB
+  mail:
+    host: ${SPRING_MAIL_HOST}           # SMTP伺服器地址
+    port: ${SPRING_MAIL_PORT:587}       # SMTP伺服器端口
+    username: ${SPRING_MAIL_USERNAME}   # SMTP伺服器使用者名稱
+    password: ${SPRING_MAIL_PASSWORD}   # 輸入應用程式密碼(如Google帳戶產生的)
+    properties:
+      mail.smtp:
+        auth: true              # 啟用SMTP身分驗證
+        starttls.enable: true   # 啟用STARTTLS加密
+        timeout: 5000
 logging:
   level:
     '[com.felixsiu.resume.repository]': DEBUG
@@ -87,3 +97,6 @@ app:
     allowed-origins:
       - "http://localhost:3000"
       - "http://localhost:5173"
+  mail:
+    from: ${SPRING_MAIL_FROM}
+    frontend-base-url: ${APP_FRONTEND_BASE_URL}

@@ -2,6 +2,7 @@ package com.felixsiu.resume.controller;
 
 import com.felixsiu.resume.model.dto.LoginDto;
 import com.felixsiu.resume.model.dto.RegisterDto;
+import com.felixsiu.resume.model.dto.VerifyEmailDto;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.model.vo.LoginVo;
 import com.felixsiu.resume.service.AuthService;
@@ -70,5 +71,13 @@ public class AuthController {
 						@Parameter(hidden = true) HttpServletResponse response
 		) {
 				return authService.refreshToken(request, response);
+		}
+		
+		@PostMapping("/verify-email")
+		@Operation(summary = "驗證電子郵箱")
+		public BaseVo<Void> verifyEmail(
+						@Valid @RequestBody VerifyEmailDto verifyEmailDto
+		) {
+				return authService.verifyEmail(verifyEmailDto);
 		}
 }

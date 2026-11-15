@@ -44,6 +44,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
 												"/api/v1/auth/captcha",
 												"/api/v1/auth/logout",
 												"/api/v1/auth/refresh",
+												"/api/v1/auth/verify-email",
 												"/api/v1/public/**"
 								);
 				
@@ -56,6 +57,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
 												"/api/v1/auth/captcha",
 												"/api/v1/auth/logout",
 												"/api/v1/auth/refresh",
+												"/api/v1/auth/verify-email",
 												"/api/v1/public/**"
 								);
 		}

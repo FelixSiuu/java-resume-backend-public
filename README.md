@@ -2,7 +2,9 @@
 
 個人履歷／作品集後端 API，供管理後台與公開作品站使用。
 
-技術棧：Java 17、Spring Boot 3.5、MyBatis-Plus、MySQL、Redis、Flyway、JWT（HttpOnly Cookie）+ XSRF。
+技術棧：Java 17、Spring Boot 3.5、MyBatis-Plus、MySQL、Redis、Flyway、JWT（HttpOnly Cookie）+ XSRF、Spring Mail（SMTP 郵箱驗證）。
+
+版本：`2.2.0`
 
 ---
 
@@ -13,6 +15,7 @@
 - JDK 17+
 - Docker / Docker Compose（MySQL、Redis）
 - 本專案已含 Maven Wrapper（`./mvnw`）
+- 可寄信的 SMTP（開發可用 Gmail App Password 等）
 
 ### 步驟
 
@@ -22,7 +25,7 @@
 cp .env.example .env
 ```
 
-依需要修改 `.env`（至少確認 `SPRING_JWT_SECRET` 長度 ≥ 32）。
+依需要修改 `.env`（至少確認 `SPRING_JWT_SECRET` 長度 ≥ 32，並填好郵件相關變數）。
 
 2. 啟動依賴服務：
 
@@ -58,6 +61,12 @@ docker compose up -d
 | `SPRING_DB_USERNAME` / `SPRING_DB_PWD` | 應用連線 DB 的帳密 |
 | `SPRING_DATABASE` | 應用使用的資料庫名稱 |
 | `SPRING_JWT_SECRET` | JWT 簽名密鑰（至少 32 字元） |
+| `SPRING_MAIL_HOST` | SMTP 主機（如 `smtp.gmail.com`） |
+| `SPRING_MAIL_PORT` | SMTP 埠（預設 `587`） |
+| `SPRING_MAIL_USERNAME` | SMTP 登入帳號 |
+| `SPRING_MAIL_PASSWORD` | SMTP 密碼／App Password |
+| `SPRING_MAIL_FROM` | 信件 From（建議與登入帳號一致） |
+| `APP_FRONTEND_BASE_URL` | 前端基底網址（驗證信連結用，如 `https://web-profolio-admin.vercel.app`） |
 
 環境設定檔：
 
@@ -71,7 +80,7 @@ docker compose up -d
 - `XSRF_TOKEN`：CSRF 雙 Cookie 比對用
 - CORS 允許來源：`http://localhost:3000`、`http://localhost:5173`（見 `app.cors.allowed-origins`）
 
-正式環境請在 `application-prod.yaml` 對齊 cookie 名稱、TTL，並將 CORS 設為實際前端網域；API 需走 **HTTPS**（`Secure` Cookie）。
+正式環境請在 `application-prod.yaml` 對齊 cookie 名稱、TTL，並將 CORS 設為實際前端網域；API 需走 **HTTPS**（`Secure` Cookie）。郵件與 `APP_FRONTEND_BASE_URL` 亦須在正式環境設定。
 
 ---
 
@@ -83,17 +92,28 @@ docker compose up -d
 
 | 方法 | 路徑 | 說明 |
 |------|------|------|
-| `POST` | `/auth/register` | 註冊 |
+| `POST` | `/auth/register` | 註冊（必填 `username`、`password`、`email`；寄驗證信） |
 | `GET` | `/auth/captcha` | 圖形驗證碼（寫入 Session） |
-| `POST` | `/auth/login` | 登入（可帶 `rememberMe`） |
+| `POST` | `/auth/login` | 登入（可帶 `rememberMe`；未驗證 email 仍可登入） |
 | `POST` | `/auth/refresh` | 用 refresh Cookie 換新 access／refresh／xsrf |
 | `POST` | `/auth/logout` | 登出並撤銷 refresh、清除 Cookie |
+| `POST` | `/auth/verify-email` | 驗證郵箱（body：`{ "token" }`；免登入） |
+
+### 帳戶 `/api/v1/account`（需登入）
+
+| 方法 | 路徑 | 說明 |
+|------|------|------|
+| `PUT` | `/account/change-password` | 修改密碼（需舊密碼；成功後撤銷 refresh 並清 Cookie） |
+| `PUT` | `/account/update-email` | 綁定／改綁／重寄驗證信 |
+| `GET` | `/account/email` | 查詢郵箱綁定狀態（`email`、`verified`、`nextStepMessage`） |
+| `DELETE` | `/account` | 軟刪帳戶（寬限期後排程硬刪；成功後清 Cookie／撤銷 refresh） |
 
 ### 需登入（Access Cookie）
 
 | 前綴 | 說明 |
 |------|------|
 | `/api/v1/myInfo/**` | 關於我、技能、學歷、經歷、聯絡、專案、頭像等 CRUD |
+| `/api/v1/account/**` | 帳戶設定（改密、郵箱、刪除） |
 | `/api/v1/resume` | 履歷預覽／PDF 匯出 |
 
 ### 公開（無需登入）
@@ -106,6 +126,28 @@ docker compose up -d
 
 ---
 
+## 郵箱綁定與驗證
+
+註冊與補綁都會寫入 pending email（`email_verified_at = null`），並以 SMTP 寄出驗證信。信內連結指向**前端**：
+
+`{APP_FRONTEND_BASE_URL}/verify-email?token={rawToken}`
+
+前端從 query 取 `token` 後呼叫 `POST /api/v1/auth/verify-email`。後端以 SHA-256(token) 查庫；token 綁定特定 `user_id`，且須與當前 `user.email` 一致才標記已驗證。
+
+### `PUT /account/update-email` 行為摘要
+
+| 情況 | 行為 |
+|------|------|
+| 同 email + 已驗證 | 拒絕 |
+| 同 email + 未驗證 | 只重寄驗證信 |
+| 不同 email（含已驗證後改綁） | 覆蓋信箱、清空驗證狀態、寄新驗證信 |
+
+每次寄信前會作廢該用戶尚未使用的舊 verification token。驗證信 raw token 約 15 分鐘有效、單次使用。
+
+郵箱狀態請用 `GET /account/email` 查詢，勿只依賴登入當下的 `LoginVo`。
+
+---
+
 ## 認證與安全行為
 
 本專案**不以 JSON body 回傳 access／refresh JWT**，改以瀏覽器 Cookie 持有憑證。
@@ -114,7 +156,7 @@ docker compose up -d
 
 | Cookie | HttpOnly | 用途 |
 |--------|----------|------|
-| `ACCESS_TOKEN` | 是 | 短效 JWT，守衛 `/myInfo` 等受保護介面 |
+| `ACCESS_TOKEN` | 是 | 短效 JWT，守衛 `/myInfo`、`/account` 等受保護介面 |
 | `REFRESH_TOKEN` | 是 | 不透明 refresh；hash 存 DB；`Path` 為 `/api/v1/auth` |
 | `XSRF_TOKEN` | 否* | 與請求頭比對，防 CSRF |
 
@@ -122,13 +164,19 @@ docker compose up -d
 
 跨站 Cookie 需 `Secure` + `SameSite=None`；正式環境 API 必須 HTTPS。
 
+`/auth/verify-email` 與 register／login／captcha／logout／refresh 一樣，不經 Auth／XSRF 攔截（無登入態驗證）。
+
 ### Access + Refresh 與 rememberMe
 
 - **登入**一律寫入 refresh 紀錄（DB 存 SHA-256 hash，明文只在 Cookie）。
 - `rememberMe: true`：refresh Cookie 設較長 `Max-Age`；絕對過期時間 `expires_at` 在登入時寫死。
 - `rememberMe: false`：refresh Cookie **不設 Max-Age**（瀏覽器 session）；DB 仍有較短的 `expires_at`。關掉瀏覽器後通常無法再 refresh。
 - Access 過期後，前端呼叫 `POST /api/v1/auth/refresh`：校驗未撤銷且未超過 `expires_at`，再輪替 refresh 並下發新的 access／xsrf。`expires_at` **不會**因 refresh 而延長。
-- 登出會撤銷當前 refresh（若有）並清除相關 Cookie。
+- 登出、改密、刪除帳戶會撤銷 refresh（若適用）並清除相關 Cookie。
+
+### 帳戶軟刪
+
+`DELETE /account` 為軟刪（改寫 username、清空 email，設 `deleted_at`）。約 **30 天**寬限期後由排程硬刪關聯資料（外鍵 CASCADE）。
 
 ### CORS
 
