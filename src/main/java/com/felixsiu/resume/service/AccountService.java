@@ -1,6 +1,7 @@
 package com.felixsiu.resume.service;
 
 import com.felixsiu.resume.config.MailProperties;
+import com.felixsiu.resume.model.EmailTokenMap;
 import com.felixsiu.resume.model.dto.ChangePasswordDto;
 import com.felixsiu.resume.model.dto.EmailDto;
 import com.felixsiu.resume.model.entity.User;
@@ -31,7 +32,7 @@ public class AccountService {
 		@Autowired
 		private RefreshTokenService refreshTokenService;
 		@Autowired
-		private EmailVerificationTokenService emailVerificationTokenService;
+		private EmailTokenService emailTokenService;
 		@Autowired
 		private MailProperties mailProperties;
 		@Autowired
@@ -43,7 +44,7 @@ public class AccountService {
 		 * @param userId   user id
 		 * @param response HttpServletResponse
 		 */
-		void actionCallback(String userId, HttpServletResponse response) {
+		public void actionCallback(String userId, HttpServletResponse response) {
 				cookieService.clearTokenCookies(response);
 				
 				int result = refreshTokenService.revokeAllByUserId(userId);
@@ -53,29 +54,53 @@ public class AccountService {
 		}
 		
 		/**
-		 * call JavaMailSender verify email
+		 * call JavaMailSender send email ( for email verification )
 		 *
 		 * @param toEmail receiver
 		 * @param userId  user id
 		 */
-		public void sendVerifyTokenEmail(String toEmail, String userId) {
-				int unusedTokenCount = emailVerificationTokenService.revokeUnusedByUserId(userId);
+		public void sendVerifyTokenEmail(String toEmail, String userId, EmailTokenMap emailTokenMap) {
+				String purpose = emailTokenMap.getName();
+				int unusedTokenCount = emailTokenService.revokeUnusedByUserId(userId, purpose);
 				System.out.println("clean up unused token count: " + unusedTokenCount);
+				
+				SimpleMailMessage simpleMailMessage = new SimpleMailMessage();
 				
 				try {
 						String rawEmailToken = EmailTokenUtil.generate();
 						String tokenHash = Sha256Hex.toHexString(rawEmailToken);
-						boolean insertSuccess = emailVerificationTokenService.insert(tokenHash, toEmail, userId);
+						
+						boolean insertSuccess = emailTokenService.insert(tokenHash, toEmail, userId, purpose);
+						
 						if (!insertSuccess) {
 								throw new RuntimeException("獲取電子郵箱驗證碼失敗");
 						}
 						
-						String text = "Email Verification Link: " + mailProperties.getFrontendBaseUrl() + "/verify-email?token=" + rawEmailToken + " The link expires in " + EmailVerificationTokenService.tokenExpiresInMinutes + " minutes.";
-						SimpleMailMessage simpleMailMessage = new SimpleMailMessage();
+						String frontEndPath, textPrefix, subject;
+						switch (emailTokenMap) {
+								case VERIFY:
+										frontEndPath = "/verify-email";
+										textPrefix = "Email Verification Link: ";
+										subject = "Email Verification 電子郵箱驗證";
+										break;
+								case RESET:
+										frontEndPath = "/reset-password";
+										textPrefix = "Reset Password Link: ";
+										subject = "Reset Password 重設密碼";
+										break;
+								default:
+										frontEndPath = "";
+										textPrefix = "";
+										subject = "";
+						}
+						;
+						
+						String text = textPrefix + mailProperties.getFrontendBaseUrl() + frontEndPath + "?token=" + rawEmailToken + " The link expires in " + EmailTokenService.tokenExpiresInMinutes + " minutes.";
+						simpleMailMessage.setSubject(subject);
 						simpleMailMessage.setFrom(mailProperties.getFrom());
 						simpleMailMessage.setTo(toEmail);
-						simpleMailMessage.setSubject("Email Verification 電子郵箱驗證");
 						simpleMailMessage.setText(text);
+						
 						javaMailSender.send(simpleMailMessage);
 						
 				} catch (NoSuchAlgorithmException e) {
@@ -179,7 +204,7 @@ public class AccountService {
 								throw new RuntimeException("該電子郵箱已驗證，無需重複綁定");
 						}
 						// same pending email → resend verification
-						sendVerifyTokenEmail(newEmail, userId);
+						sendVerifyTokenEmail(newEmail, userId, EmailTokenMap.VERIFY);
 						return BaseVo.success(pendingEmailVo(newEmail));
 				}
 				
@@ -195,7 +220,7 @@ public class AccountService {
 						throw new RuntimeException("更新電子郵箱失敗");
 				}
 				
-				sendVerifyTokenEmail(newEmail, userId);
+				sendVerifyTokenEmail(newEmail, userId, EmailTokenMap.VERIFY);
 				return BaseVo.success(pendingEmailVo(newEmail));
 		}
 		

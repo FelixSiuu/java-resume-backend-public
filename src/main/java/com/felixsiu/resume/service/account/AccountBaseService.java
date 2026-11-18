@@ -30,6 +30,20 @@ public class AccountBaseService extends ServiceImpl<UserMapper, User> {
 		}
 		
 		/**
+		 * get user (verified email & not soft deleted)
+		 *
+		 * @param email email
+		 * @return User
+		 */
+		public User selectByVerifiedEmail(String email) {
+				return this.getOne(new LambdaQueryWrapper<User>()
+								.eq(User::getEmail, email)
+								.isNotNull(User::getEmailVerifiedAt)
+								.isNull(User::getDeletedAt)
+				);
+		}
+		
+		/**
 		 * set account delete time and new username and null email (avoid register UK, update email UK)
 		 *
 		 * @param userId    user id
@@ -51,7 +65,7 @@ public class AccountBaseService extends ServiceImpl<UserMapper, User> {
 		 * set account new password
 		 *
 		 * @param userId      user id
-		 * @param newPassword new password
+		 * @param newPassword new encoded password
 		 * @return bool
 		 */
 		public boolean updatePasswordByPK(String userId, String newPassword) {

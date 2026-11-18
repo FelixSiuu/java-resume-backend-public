@@ -20,7 +20,15 @@ public class BaseVo<T> {
 				return new BaseVo<>(true, "OK", "success!", data);
 		}
 		
+		public static <F> BaseVo<F> success(F data, String message) {
+				return new BaseVo<>(true, "OK", message, data);
+		}
+		
 		public static <F> BaseVo<F> fail(String code, String message) {
 				return new BaseVo<>(false, code, message, null);
+		}
+		
+		public static <F> BaseVo<F> fail(F data, String message) {
+				return new BaseVo<>(false, "FAILED", message, data);
 		}
 }

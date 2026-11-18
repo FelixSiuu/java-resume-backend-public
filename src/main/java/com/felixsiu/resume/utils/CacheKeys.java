@@ -24,8 +24,12 @@ public class CacheKeys {
 				return PREFIX + "contact:" + userId;
 		}
 		
-		public static String projects(String userId){
+		public static String projects(String userId) {
 				return PREFIX + "projects:" + userId;
+		}
+		
+		public static String forgotPassword(String email) {
+				return PREFIX + "forgot-password:" + email;
 		}
 		
 		/**

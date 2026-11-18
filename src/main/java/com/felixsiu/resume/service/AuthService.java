@@ -2,20 +2,17 @@ package com.felixsiu.resume.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.felixsiu.resume.config.CookieProperties;
-import com.felixsiu.resume.model.dto.LoginDto;
-import com.felixsiu.resume.model.dto.RegisterDto;
-import com.felixsiu.resume.model.dto.VerifyEmailDto;
-import com.felixsiu.resume.model.entity.EmailVerificationToken;
+import com.felixsiu.resume.model.EmailTokenMap;
+import com.felixsiu.resume.model.dto.*;
+import com.felixsiu.resume.model.entity.EmailToken;
 import com.felixsiu.resume.model.entity.RefreshToken;
 import com.felixsiu.resume.model.entity.User;
 import com.felixsiu.resume.model.vo.BaseVo;
+import com.felixsiu.resume.model.vo.CoolDownVo;
 import com.felixsiu.resume.model.vo.LoginVo;
 import com.felixsiu.resume.respository.UserMapper;
 import com.felixsiu.resume.service.account.AccountBaseService;
-import com.felixsiu.resume.utils.JwtUtil;
-import com.felixsiu.resume.utils.RefreshTokenUtil;
-import com.felixsiu.resume.utils.Sha256Hex;
-import com.felixsiu.resume.utils.XsrfTokenUtil;
+import com.felixsiu.resume.utils.*;
 import com.google.code.kaptcha.impl.DefaultKaptcha;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -35,6 +32,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Base64;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class AuthService {
@@ -53,11 +51,15 @@ public class AuthService {
 		@Autowired
 		CookieService cookieService;
 		@Autowired
-		EmailVerificationTokenService emailVerificationTokenService;
+		EmailTokenService emailTokenService;
 		@Autowired
 		AccountBaseService accountBaseService;
 		@Autowired
 		AccountService accountService;
+		@Autowired
+		MyRedisTemplate myRedisTemplate;
+		
+		private final String captchaSessionName = "captcha";
 		
 		/**
 		 * 註冊
@@ -69,7 +71,7 @@ public class AuthService {
 				
 				Long thisEmailCount = accountBaseService.countEmail(email);
 				
-				if(thisEmailCount > 0) {
+				if (thisEmailCount > 0) {
 						throw new RuntimeException("該電子郵箱已被佔用");
 				}
 				
@@ -94,7 +96,7 @@ public class AuthService {
 						throw new RuntimeException("創建帳號失敗");
 				}
 				
-				accountService.sendVerifyTokenEmail(email, userId);
+				accountService.sendVerifyTokenEmail(email, userId, EmailTokenMap.VERIFY);
 				
 				return BaseVo.success(null);
 		}
@@ -109,9 +111,11 @@ public class AuthService {
 				String capt = loginDto.captcha();
 				Boolean rememberMe = loginDto.rememberMe();
 				
-				if (!capt.equals(httpSession.getAttribute("captcha"))) {
+				if (!capt.equals(httpSession.getAttribute(captchaSessionName))) {
 						throw new RuntimeException("captcha 錯誤");
 				}
+				
+				httpSession.removeAttribute(captchaSessionName);
 				
 				User foundUser = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, un));
 				
@@ -176,7 +180,7 @@ public class AuthService {
 				String text = defaultKaptcha.createText();
 				System.out.println("captcha text: " + text);
 				
-				session.setAttribute("captcha", text);
+				session.setAttribute(captchaSessionName, text);
 				BufferedImage bufferedImage = defaultKaptcha.createImage(text);
 				ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
 				ImageIO.write(bufferedImage, "jpg", byteArrayOutputStream);
@@ -243,6 +247,13 @@ public class AuthService {
 				return BaseVo.success(null);
 		}
 		
+		/**
+		 * refresh token
+		 *
+		 * @param request  HttpServletRequest
+		 * @param response HttpServletResponse
+		 * @return LoginVo
+		 */
 		@Transactional(rollbackFor = Exception.class)
 		public BaseVo<LoginVo> refreshToken(HttpServletRequest request, HttpServletResponse response) {
 				
@@ -347,53 +358,170 @@ public class AuthService {
 		}
 		
 		/**
+		 * find valid token hash (reset or verify)
+		 *
+		 * @param rawToken      raw token
+		 * @param emailTokenMap enum EmailTokenMap
+		 * @return EmailToken
+		 */
+		private EmailToken findValidEmailToken(String rawToken, EmailTokenMap emailTokenMap) {
+				if (!StringUtils.hasText(rawToken)) {
+						throw new RuntimeException("token不能為空");
+				}
+				
+				try {
+						String tokenHash = Sha256Hex.toHexString(rawToken);
+						
+						EmailToken validTokenHash = emailTokenService.findByValidHash(
+										tokenHash,
+										emailTokenMap.getName()
+						);
+						
+						if (validTokenHash == null) {
+								throw new RuntimeException("token 無效或已失效");
+						}
+						
+						return validTokenHash;
+						
+				} catch (NoSuchAlgorithmException e) {
+						throw new RuntimeException("token 無效或已失效");
+				}
+		}
+		
+		/**
 		 * verify email
 		 *
 		 * @param dto email from front end
 		 * @return void
 		 */
 		@Transactional(rollbackFor = Exception.class)
-		public BaseVo<Void> verifyEmail(VerifyEmailDto dto) {
-				String token = dto.token();
+		public BaseVo<Void> verifyEmail(ValidateEmailTokenDto dto) {
+				EmailToken validTokenHash = findValidEmailToken(dto.token(), EmailTokenMap.VERIFY);
 				
-				if (!StringUtils.hasText(token)) {
-						throw new RuntimeException("token不能為空");
-				}
+				String userId = validTokenHash.getUserId();
 				
-				try {
-						String tokenHash = Sha256Hex.toHexString(token);
-						
-						EmailVerificationToken validTokenHash = emailVerificationTokenService.findByValidHash(tokenHash);
-						
-						if (validTokenHash == null) {
-								throw new RuntimeException("token 無效或已失效");
-						}
-						
-						String userId = validTokenHash.getUserId();
-						
-						User foundUser = accountBaseService.selectByPK(userId);
-						String email = validTokenHash.getEmail();
-						
-						if (foundUser == null || foundUser.getEmail() == null || !foundUser.getEmail().equals(email)) {
-								throw new RuntimeException("token 無效或已失效");
-						}
-						
-						boolean updateHashUsedAtSuccess = emailVerificationTokenService.updateHashUsedAt(tokenHash);
-						
-						if (!updateHashUsedAtSuccess) {
-								throw new RuntimeException("驗證電子郵箱出現了錯誤");
-						}
-						
-						boolean updateEmailStatusSuccess = accountBaseService.updateEmailByPK(userId, email, LocalDateTime.now());
-						
-						if (!updateEmailStatusSuccess) {
-								throw new RuntimeException("更新電子郵箱狀態失敗");
-						}
-						
-						return BaseVo.success(null);
-						
-				} catch (NoSuchAlgorithmException e) {
+				User foundUser = accountBaseService.selectByPK(userId);
+				String email = validTokenHash.getEmail();
+				
+				if (foundUser == null || foundUser.getEmail() == null || !foundUser.getEmail().equals(email)) {
 						throw new RuntimeException("token 無效或已失效");
 				}
+				
+				boolean updateHashUsedAtSuccess = emailTokenService.updateHashUsedAt(validTokenHash.getTokenHash());
+				
+				if (!updateHashUsedAtSuccess) {
+						throw new RuntimeException("驗證電子郵箱出現了錯誤");
+				}
+				
+				boolean updateEmailStatusSuccess = accountBaseService.updateEmailByPK(userId, email, LocalDateTime.now());
+				
+				if (!updateEmailStatusSuccess) {
+						throw new RuntimeException("更新電子郵箱狀態失敗");
+				}
+				
+				return BaseVo.success(null);
 		}
+		
+		/**
+		 * forgot password, request to send email
+		 * ttl 60 seconds
+		 *
+		 * @param httpSession HttpSession
+		 * @param dto         ForgotPasswordDto
+		 * @return CoolDownVo (cooldown seconds)
+		 */
+		public BaseVo<CoolDownVo> forgotPassword(HttpSession httpSession, ForgotPasswordDto dto) {
+				String captcha = dto.captcha();
+				String email = dto.email();
+				final long CACHE_TTL = 60;
+				final TimeUnit CACHE_TTL_UNIT = TimeUnit.SECONDS;
+				String cacheKey = CacheKeys.forgotPassword(email.toLowerCase());
+				
+				if (captcha == null || !captcha.equals(httpSession.getAttribute(captchaSessionName))) {
+						throw new RuntimeException("captcha 錯誤");
+				}
+				
+				httpSession.removeAttribute(captchaSessionName);
+				
+				Long ttl = myRedisTemplate.getExpire(cacheKey, CACHE_TTL_UNIT);
+				
+				if (ttl != null && ttl > 0) {
+						CoolDownVo vo = new CoolDownVo();
+						vo.setCd(ttl);
+						return BaseVo.fail(vo, "Too many requests, please try again later.");
+				}
+				
+				User user = accountBaseService.selectByVerifiedEmail(email);
+				
+				if (user != null) {
+						String toEmail = user.getEmail();
+						String userId = user.getId();
+						accountService.sendVerifyTokenEmail(toEmail, userId, EmailTokenMap.RESET);
+				}
+				
+				myRedisTemplate.set(cacheKey, "1", CACHE_TTL, CACHE_TTL_UNIT);
+				
+				CoolDownVo coolDownVo = new CoolDownVo();
+				coolDownVo.setCd(60);
+				
+				return BaseVo.success(coolDownVo, "If this email is registered and verified, we have sent a password reset link.");
+		}
+		
+		/**
+		 * reset password, clean cookie
+		 *
+		 * @param dto      ResetPasswordDto
+		 * @param response HttpServletResponse
+		 * @return void
+		 */
+		@Transactional(rollbackFor = Exception.class)
+		public BaseVo<Void> resetPassword(ResetPasswordDto dto, HttpServletResponse response) {
+				EmailToken validTokenHash = findValidEmailToken(dto.token(), EmailTokenMap.RESET);
+				
+				String userId = validTokenHash.getUserId();
+				
+				User foundUser = accountBaseService.selectByPK(userId);
+				
+				if (foundUser == null || foundUser.getDeletedAt() != null) {
+						throw new RuntimeException("token 無效或已失效");
+				}
+				
+				if (passwordEncoder.matches(dto.password(), foundUser.getPassword())) {
+						throw new RuntimeException("新舊密碼一致，不需要重置");
+				}
+				
+				String newPassword = passwordEncoder.encode(dto.password());
+				
+				boolean isUpdateSuccess = accountBaseService.updatePasswordByPK(userId, newPassword);
+				
+				if (!isUpdateSuccess) {
+						throw new RuntimeException("更新密碼出現了錯誤");
+				}
+				
+				boolean updateHashUsedAtSuccess = emailTokenService.updateHashUsedAt(validTokenHash.getTokenHash());
+				
+				if (!updateHashUsedAtSuccess) {
+						throw new RuntimeException("更新密碼出現了錯誤");
+				}
+				
+				accountService.actionCallback(userId, response);
+				
+				return BaseVo.success(null);
+		}
+		
+		/**
+		 * reset password token check
+		 *
+		 * @param dto ValidateEmailTokenDto
+		 * @return void
+		 */
+		public BaseVo<Void> validateResetToken(ValidateEmailTokenDto dto) {
+				EmailToken validTokenHash = findValidEmailToken(dto.token(), EmailTokenMap.RESET);
+				User user = accountBaseService.selectByPK(validTokenHash.getUserId());
+				if (user == null || user.getDeletedAt() != null) {
+						throw new RuntimeException("token 無效或已失效");
+				}
+				return BaseVo.success(null);
+		}
+		
 }

@@ -1,6 +1,7 @@
 package com.felixsiu.resume.service;
 
 import com.felixsiu.resume.config.MailProperties;
+import com.felixsiu.resume.model.EmailTokenMap;
 import com.felixsiu.resume.model.dto.ChangePasswordDto;
 import com.felixsiu.resume.model.dto.EmailDto;
 import com.felixsiu.resume.model.entity.User;
@@ -37,7 +38,7 @@ class AccountServiceTest {
 		@Mock
 		private RefreshTokenService refreshTokenService;
 		@Mock
-		private EmailVerificationTokenService emailVerificationTokenService;
+		private EmailTokenService emailTokenService;
 		@Mock
 		private MailProperties mailProperties;
 		@Mock
@@ -46,6 +47,8 @@ class AccountServiceTest {
 		private HttpServletResponse response;
 		@InjectMocks
 		private AccountService accountService;
+		
+		private final String purposeVerifyEmail = EmailTokenMap.VERIFY.getName();
 		
 		private User createUser(String id, String username, String encodedPassword) {
 				User user = new User();
@@ -236,7 +239,7 @@ class AccountServiceTest {
 				
 				verify(accountBaseService, never()).countEmail(anyString());
 				verify(accountBaseService, never()).updateEmailByPK(anyString(), anyString(), any());
-				verify(emailVerificationTokenService, never()).insert(anyString(), anyString(), anyString());
+				verify(emailTokenService, never()).insert(anyString(), anyString(), anyString(), anyString());
 				verify(javaMailSender, never()).send(any(SimpleMailMessage.class));
 		}
 		
@@ -252,8 +255,8 @@ class AccountServiceTest {
 				when(accountBaseService.selectByPK(userId)).thenReturn(user);
 				when(accountBaseService.countEmail(email)).thenReturn(0L);
 				when(accountBaseService.updateEmailByPK(userId, email, null)).thenReturn(true);
-				when(emailVerificationTokenService.revokeUnusedByUserId(userId)).thenReturn(0);
-				when(emailVerificationTokenService.insert(anyString(), eq(email), eq(userId))).thenReturn(true);
+				when(emailTokenService.revokeUnusedByUserId(userId, purposeVerifyEmail)).thenReturn(0);
+				when(emailTokenService.insert(anyString(), eq(email), eq(userId), eq(purposeVerifyEmail))).thenReturn(true);
 				stubMailForSend();
 				
 				BaseVo<EmailVo> result = accountService.updateEmail(userId, dto);
@@ -264,9 +267,9 @@ class AccountServiceTest {
 				assertThat(result.getData().getNextStepMessage()).isNotBlank();
 				verify(accountBaseService).updateEmailByPK(userId, email, null);
 				
-				InOrder inOrder = inOrder(emailVerificationTokenService, javaMailSender);
-				inOrder.verify(emailVerificationTokenService).revokeUnusedByUserId(userId);
-				inOrder.verify(emailVerificationTokenService).insert(anyString(), eq(email), eq(userId));
+				InOrder inOrder = inOrder(emailTokenService, javaMailSender);
+				inOrder.verify(emailTokenService).revokeUnusedByUserId(userId, purposeVerifyEmail);
+				inOrder.verify(emailTokenService).insert(anyString(), eq(email), eq(userId), eq(purposeVerifyEmail));
 				inOrder.verify(javaMailSender).send(any(SimpleMailMessage.class));
 				
 				ArgumentCaptor<SimpleMailMessage> mailCaptor = ArgumentCaptor.forClass(SimpleMailMessage.class);
@@ -285,8 +288,8 @@ class AccountServiceTest {
 				EmailDto dto = new EmailDto(email);
 				
 				when(accountBaseService.selectByPK(userId)).thenReturn(user);
-				when(emailVerificationTokenService.revokeUnusedByUserId(userId)).thenReturn(1);
-				when(emailVerificationTokenService.insert(anyString(), eq(email), eq(userId))).thenReturn(true);
+				when(emailTokenService.revokeUnusedByUserId(userId, purposeVerifyEmail)).thenReturn(1);
+				when(emailTokenService.insert(anyString(), eq(email), eq(userId), eq(purposeVerifyEmail))).thenReturn(true);
 				stubMailForSend();
 				
 				BaseVo<EmailVo> result = accountService.updateEmail(userId, dto);
@@ -297,9 +300,9 @@ class AccountServiceTest {
 				verify(accountBaseService, never()).countEmail(anyString());
 				verify(accountBaseService, never()).updateEmailByPK(anyString(), anyString(), any());
 				
-				InOrder inOrder = inOrder(emailVerificationTokenService);
-				inOrder.verify(emailVerificationTokenService).revokeUnusedByUserId(userId);
-				inOrder.verify(emailVerificationTokenService).insert(anyString(), eq(email), eq(userId));
+				InOrder inOrder = inOrder(emailTokenService);
+				inOrder.verify(emailTokenService).revokeUnusedByUserId(userId, purposeVerifyEmail);
+				inOrder.verify(emailTokenService).insert(anyString(), eq(email), eq(userId), eq(purposeVerifyEmail));
 				verify(javaMailSender).send(any(SimpleMailMessage.class));
 		}
 		
@@ -320,7 +323,7 @@ class AccountServiceTest {
 				
 				verify(accountBaseService, never()).countEmail(anyString());
 				verify(accountBaseService, never()).updateEmailByPK(anyString(), anyString(), any());
-				verify(emailVerificationTokenService, never()).insert(anyString(), anyString(), anyString());
+				verify(emailTokenService, never()).insert(anyString(), anyString(), anyString(), anyString());
 				verify(javaMailSender, never()).send(any(SimpleMailMessage.class));
 		}
 		
@@ -340,7 +343,7 @@ class AccountServiceTest {
 								.hasMessageContaining("已被佔用");
 				
 				verify(accountBaseService, never()).updateEmailByPK(anyString(), anyString(), any());
-				verify(emailVerificationTokenService, never()).insert(anyString(), anyString(), anyString());
+				verify(emailTokenService, never()).insert(anyString(), anyString(), anyString(), anyString());
 				verify(javaMailSender, never()).send(any(SimpleMailMessage.class));
 		}
 		
@@ -360,7 +363,7 @@ class AccountServiceTest {
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("更新電子郵箱失敗");
 				
-				verify(emailVerificationTokenService, never()).insert(anyString(), anyString(), anyString());
+				verify(emailTokenService, never()).insert(anyString(), anyString(), anyString(), anyString());
 				verify(javaMailSender, never()).send(any(SimpleMailMessage.class));
 		}
 		
@@ -375,7 +378,7 @@ class AccountServiceTest {
 				when(accountBaseService.selectByPK(userId)).thenReturn(user);
 				when(accountBaseService.countEmail(email)).thenReturn(0L);
 				when(accountBaseService.updateEmailByPK(userId, email, null)).thenReturn(true);
-				when(emailVerificationTokenService.insert(anyString(), eq(email), eq(userId))).thenReturn(false);
+				when(emailTokenService.insert(anyString(), eq(email), eq(userId), eq(purposeVerifyEmail))).thenReturn(false);
 				
 				assertThatThrownBy(() -> accountService.updateEmail(userId, dto))
 								.isInstanceOf(RuntimeException.class)
@@ -397,8 +400,8 @@ class AccountServiceTest {
 				when(accountBaseService.selectByPK(userId)).thenReturn(user);
 				when(accountBaseService.countEmail(newEmail)).thenReturn(0L);
 				when(accountBaseService.updateEmailByPK(userId, newEmail, null)).thenReturn(true);
-				when(emailVerificationTokenService.revokeUnusedByUserId(userId)).thenReturn(1);
-				when(emailVerificationTokenService.insert(anyString(), eq(newEmail), eq(userId))).thenReturn(true);
+				when(emailTokenService.revokeUnusedByUserId(userId, purposeVerifyEmail)).thenReturn(1);
+				when(emailTokenService.insert(anyString(), eq(newEmail), eq(userId), eq(purposeVerifyEmail))).thenReturn(true);
 				stubMailForSend();
 				
 				BaseVo<EmailVo> result = accountService.updateEmail(userId, dto);
@@ -407,8 +410,8 @@ class AccountServiceTest {
 				assertThat(result.getData().getEmail()).isEqualTo(newEmail);
 				assertThat(result.getData().getVerified()).isFalse();
 				verify(accountBaseService).updateEmailByPK(userId, newEmail, null);
-				verify(emailVerificationTokenService).revokeUnusedByUserId(userId);
-				verify(emailVerificationTokenService).insert(anyString(), eq(newEmail), eq(userId));
+				verify(emailTokenService).revokeUnusedByUserId(userId, purposeVerifyEmail);
+				verify(emailTokenService).insert(anyString(), eq(newEmail), eq(userId), eq(purposeVerifyEmail));
 				verify(javaMailSender).send(any(SimpleMailMessage.class));
 		}
 		

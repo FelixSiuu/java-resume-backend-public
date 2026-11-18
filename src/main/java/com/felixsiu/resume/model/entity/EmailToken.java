@@ -5,13 +5,14 @@ import lombok.Data;
 
 import java.time.LocalDateTime;
 
-@TableName("email_verification_token")
+@TableName("email_token")
 @Data
-public class EmailVerificationToken {
+public class EmailToken {
 		@TableId(value = "token_hash", type = IdType.INPUT)
 		private String tokenHash;
 		private String userId;
 		private String email;
+		private String purpose;
 		private LocalDateTime expiresAt;
 		private LocalDateTime usedAt;
 		@TableField(updateStrategy = FieldStrategy.NEVER, insertStrategy = FieldStrategy.NEVER)

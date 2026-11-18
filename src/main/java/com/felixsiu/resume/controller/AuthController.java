@@ -1,9 +1,8 @@
 package com.felixsiu.resume.controller;
 
-import com.felixsiu.resume.model.dto.LoginDto;
-import com.felixsiu.resume.model.dto.RegisterDto;
-import com.felixsiu.resume.model.dto.VerifyEmailDto;
+import com.felixsiu.resume.model.dto.*;
 import com.felixsiu.resume.model.vo.BaseVo;
+import com.felixsiu.resume.model.vo.CoolDownVo;
 import com.felixsiu.resume.model.vo.LoginVo;
 import com.felixsiu.resume.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -19,11 +18,11 @@ import org.springframework.web.bind.annotation.*;
 import java.io.IOException;
 
 /**
- * 用戶接口
+ * 校驗接口
  */
 @RestController
 @RequestMapping("/api/v1/auth")
-@Tag(name = "User", description = "用戶的相關接口")
+@Tag(name = "Auth", description = "校驗的相關接口")
 public class AuthController {
 		@Autowired
 		AuthService authService;
@@ -76,8 +75,34 @@ public class AuthController {
 		@PostMapping("/verify-email")
 		@Operation(summary = "驗證電子郵箱")
 		public BaseVo<Void> verifyEmail(
-						@Valid @RequestBody VerifyEmailDto verifyEmailDto
+						@Valid @RequestBody ValidateEmailTokenDto validateEmailTokenDto
 		) {
-				return authService.verifyEmail(verifyEmailDto);
+				return authService.verifyEmail(validateEmailTokenDto);
+		}
+		
+		@PostMapping("/forgot-password")
+		@Operation(summary = "忘記密碼 請求發信")
+		public BaseVo<CoolDownVo> forgotPassword(
+						@Parameter(hidden = true) HttpSession httpSession,
+						@Valid @RequestBody ForgotPasswordDto forgotPasswordDto
+		) {
+				return authService.forgotPassword(httpSession, forgotPasswordDto);
+		}
+		
+		@PostMapping("/validate-reset-token")
+		@Operation(summary = "重置密碼token校驗")
+		public BaseVo<Void> validateResetToken(
+						@Valid @RequestBody ValidateEmailTokenDto validateEmailTokenDto
+		) {
+				return authService.validateResetToken(validateEmailTokenDto);
+		}
+		
+		@PostMapping("/reset-password")
+		@Operation(summary = "重置密碼")
+		public BaseVo<Void> resetPassword(
+						@Valid @RequestBody ResetPasswordDto resetPasswordDto,
+						@Parameter(hidden = true) HttpServletResponse response
+		) {
+				return authService.resetPassword(resetPasswordDto, response);
 		}
 }

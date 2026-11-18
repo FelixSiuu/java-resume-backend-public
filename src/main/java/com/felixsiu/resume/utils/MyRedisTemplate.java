@@ -72,4 +72,8 @@ public class MyRedisTemplate {
 		public Boolean hasKey(String key) {
 				return redisTemplate.hasKey(key);
 		}
+		
+		public Long getExpire(String key, TimeUnit unit) {
+				return redisTemplate.getExpire(key, unit);
+		}
 }
