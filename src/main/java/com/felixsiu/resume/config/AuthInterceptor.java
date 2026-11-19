@@ -1,5 +1,7 @@
 package com.felixsiu.resume.config;
 
+import com.felixsiu.resume.exception.ErrorResponseWriter;
+import com.felixsiu.resume.model.ErrorMap;
 import com.felixsiu.resume.utils.JwtUtil;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
@@ -23,6 +25,8 @@ public class AuthInterceptor implements HandlerInterceptor {
 		JwtUtil jwtUtil;
 		@Autowired
 		CookieProperties cookieProperties;
+		@Autowired
+		ErrorResponseWriter errorResponseWriter;
 		
 		@Override
 		public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
@@ -44,8 +48,8 @@ public class AuthInterceptor implements HandlerInterceptor {
 						}
 				}
 				
-				if(token == null || !jwtUtil.verifyToken(token)){
-						response.setStatus(401);
+				if (token == null || !jwtUtil.verifyToken(token)) {
+						errorResponseWriter.write(response, ErrorMap.UNAUTHORIZED);
 						return false;
 				}
 				

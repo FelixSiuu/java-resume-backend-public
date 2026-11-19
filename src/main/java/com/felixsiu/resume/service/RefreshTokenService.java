@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.felixsiu.resume.model.entity.RefreshToken;
-import com.felixsiu.resume.respository.RefreshTokenMapper;
+import com.felixsiu.resume.repository.RefreshTokenMapper;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -78,6 +78,7 @@ public class RefreshTokenService extends ServiceImpl<RefreshTokenMapper, Refresh
 		
 		/**
 		 * clean up expired token or (revoked and created before 30 days)
+		 *
 		 * @return affected row
 		 */
 		public int cleanUpExpiredTokens() {

@@ -2,6 +2,8 @@ package com.felixsiu.resume.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.felixsiu.resume.exception.BusinessException;
+import com.felixsiu.resume.model.ErrorMap;
 import com.felixsiu.resume.model.dto.KeyRespDto;
 import com.felixsiu.resume.model.dto.WorkingExpDto;
 import com.felixsiu.resume.model.entity.KeyResponsibilities;
@@ -9,10 +11,11 @@ import com.felixsiu.resume.model.entity.WorkingExperience;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.model.vo.KeyResponsibilitiesVo;
 import com.felixsiu.resume.model.vo.WorkingExperienceVo;
-import com.felixsiu.resume.respository.KeyResponsibilitiesMapper;
-import com.felixsiu.resume.respository.WorkingExperienceMapper;
+import com.felixsiu.resume.repository.KeyResponsibilitiesMapper;
+import com.felixsiu.resume.repository.WorkingExperienceMapper;
 import com.felixsiu.resume.utils.CacheKeys;
 import com.felixsiu.resume.utils.MyRedisTemplate;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,6 +27,7 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class WorkingExpService {
 		@Autowired
@@ -61,12 +65,12 @@ public class WorkingExpService {
 				List<WorkingExperienceVo> cached = myRedisTemplate.get(cacheKey, new TypeReference<List<WorkingExperienceVo>>() {
 				});
 				if (cached != null) {
-						System.out.println("✅ 命中缓存！");
+						log.debug("cache hit");
 						return BaseVo.success(cached);
 				}
 				
 				// 2. 缓存未命中，查 MySQL
-				System.out.println("❌ 缓存未命中，查询数据库...");
+				log.debug("cache miss, querying DB");
 				
 				// 最新的工作經驗排在前頭，根據id進行倒序獲取
 				LambdaQueryWrapper<WorkingExperience> weLambdaQueryWrapper = new LambdaQueryWrapper<>();
@@ -130,7 +134,7 @@ public class WorkingExpService {
 				WorkingExperience wE = workingExperienceMapper.selectOne(wElambdaQueryWrapper);
 				
 				if (wE == null) {
-						throw new RuntimeException("刪除失敗，資料不存在");
+						throw new BusinessException(ErrorMap.RESOURCE_NOT_FOUND);
 				}
 				
 				Integer workingId = wE.getId();
@@ -145,7 +149,7 @@ public class WorkingExpService {
 				// 刪除主表的數據
 				int deleteWERes = workingExperienceMapper.delete(wElambdaQueryWrapper);
 				if (deleteWERes == 0) {
-						throw new RuntimeException("刪除失敗，資料不存在");
+						throw new BusinessException(ErrorMap.RESOURCE_NOT_FOUND);
 				}
 				
 				myRedisTemplate.delete(CacheKeys.experience(userId));
@@ -160,7 +164,7 @@ public class WorkingExpService {
 		public BaseVo<Void> editWorkingExperiences(Integer id, WorkingExpDto workingExpDto, String userId) throws RuntimeException {
 				
 				if (isPostBodyNotOk(workingExpDto)) {
-						throw new RuntimeException("參數缺失");
+						throw new BusinessException(ErrorMap.MISSING_PARAM);
 				}
 				
 				List<KeyRespDto> kRListDto = workingExpDto.keyResponsibilities();
@@ -200,7 +204,7 @@ public class WorkingExpService {
 				wE.setUserId(userId);
 				int updateWERes = workingExperienceMapper.updateById(wE);
 				if (updateWERes == 0) {
-						throw new RuntimeException("修改失敗");
+						throw new BusinessException(ErrorMap.UPDATE_FAILED);
 				}
 				
 				myRedisTemplate.delete(CacheKeys.experience(userId));
@@ -215,7 +219,7 @@ public class WorkingExpService {
 		public BaseVo<Void> addWorkingExperiences(WorkingExpDto workingExpDto, String userId) throws RuntimeException {
 				
 				if (isPostBodyNotOk(workingExpDto)) {
-						throw new RuntimeException("參數缺失");
+						throw new BusinessException(ErrorMap.MISSING_PARAM);
 				}
 				
 				// 添加主表的數據
@@ -228,7 +232,7 @@ public class WorkingExpService {
 				wE.setUserId(userId);
 				int updateWERes = workingExperienceMapper.insert(wE);
 				if (updateWERes == 0) {
-						throw new RuntimeException("添加失敗");
+						throw new BusinessException(ErrorMap.CREATE_FAILED);
 				}
 				
 				List<KeyRespDto> kRListDto = workingExpDto.keyResponsibilities();

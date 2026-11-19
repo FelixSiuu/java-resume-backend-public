@@ -2,13 +2,16 @@ package com.felixsiu.resume.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.felixsiu.resume.exception.BusinessException;
+import com.felixsiu.resume.model.ErrorMap;
 import com.felixsiu.resume.model.dto.AboutDto;
 import com.felixsiu.resume.model.entity.About;
 import com.felixsiu.resume.model.vo.AboutVo;
 import com.felixsiu.resume.model.vo.BaseVo;
-import com.felixsiu.resume.respository.AboutMapper;
+import com.felixsiu.resume.repository.AboutMapper;
 import com.felixsiu.resume.utils.CacheKeys;
 import com.felixsiu.resume.utils.MyRedisTemplate;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -16,6 +19,7 @@ import org.springframework.util.StringUtils;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Service
 public class AboutService {
 		@Autowired
@@ -37,12 +41,12 @@ public class AboutService {
 				List<AboutVo> cached = myRedisTemplate.get(cacheKey, new TypeReference<List<AboutVo>>() {
 				});
 				if (cached != null) {
-						System.out.println("✅ 命中缓存！");
+						log.debug("cache hit");
 						return BaseVo.success(cached);
 				}
 				
 				// 2. 缓存未命中，查 MySQL
-				System.out.println("❌ 缓存未命中，查询数据库...");
+				log.debug("cache miss, querying DB");
 				
 				LambdaQueryWrapper<About> lambdaQueryWrapper = new LambdaQueryWrapper<>();
 				lambdaQueryWrapper.eq(About::getUserId, userId);
@@ -69,7 +73,7 @@ public class AboutService {
 		public BaseVo<Void> editAbout(Integer id, AboutDto aboutDto, String userId) throws RuntimeException {
 				
 				if (aboutDto == null || !StringUtils.hasText(aboutDto.paragraph())) {
-						throw new RuntimeException("參數缺失");
+						throw new BusinessException(ErrorMap.MISSING_PARAM);
 				}
 				
 				String paragraph = aboutDto.paragraph();
@@ -82,7 +86,7 @@ public class AboutService {
 				int res = aboutMapper.updateById(about);
 				
 				if (res == 0) {
-						throw new RuntimeException("修改失敗，資料不存在或內容未變更");
+						throw new BusinessException(ErrorMap.CONTENT_UNCHANGED);
 				}
 				
 				// ✅ 清除缓存
@@ -102,7 +106,7 @@ public class AboutService {
 				int res = aboutMapper.delete(lambdaQueryWrapper);
 				
 				if (res == 0) {
-						throw new RuntimeException("刪除失敗，資料不存在");
+						throw new BusinessException(ErrorMap.RESOURCE_NOT_FOUND);
 				}
 				
 				// ✅ 清除缓存
@@ -117,7 +121,7 @@ public class AboutService {
 		public BaseVo<Void> addAbout(AboutDto aboutDto, String userId) throws RuntimeException {
 				
 				if (aboutDto == null || !StringUtils.hasText(aboutDto.paragraph())) {
-						throw new RuntimeException("參數缺失");
+						throw new BusinessException(ErrorMap.MISSING_PARAM);
 				}
 				
 				About about = new About();
@@ -127,7 +131,7 @@ public class AboutService {
 				int res = aboutMapper.insert(about);
 				
 				if (res == 0) {
-						throw new RuntimeException("添加失敗");
+						throw new BusinessException(ErrorMap.CREATE_FAILED);
 				}
 				
 				// ✅ 清除缓存

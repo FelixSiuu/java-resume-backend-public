@@ -4,7 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.felixsiu.resume.model.entity.User;
-import com.felixsiu.resume.respository.UserMapper;
+import com.felixsiu.resume.repository.UserMapper;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;

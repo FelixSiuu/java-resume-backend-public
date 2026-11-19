@@ -3,12 +3,14 @@ package com.felixsiu.resume.utils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Component
 public class MyRedisTemplate {
 		@Autowired
@@ -33,7 +35,7 @@ public class MyRedisTemplate {
 				try {
 						return objectMapper.readValue(jsonString, typeRef);
 				} catch (JsonProcessingException e) {
-						System.err.println("❌ 反序列化失败 [key=" + key + "]: " + e.getMessage());
+						log.warn("反序列化失败 [key={}]: {}", key, e.getMessage());
 						return null;
 				}
 		}
@@ -51,7 +53,7 @@ public class MyRedisTemplate {
 						String jsonString = objectMapper.writeValueAsString(value);
 						redisTemplate.opsForValue().set(key, jsonString, timeout, unit);
 				} catch (JsonProcessingException e) {
-						System.err.println("❌ 序列化失败 [key=" + key + "]: " + e.getMessage());
+						log.warn("序列化失败 [key={}]: {}", key, e.getMessage());
 				}
 		}
 		
@@ -60,8 +62,8 @@ public class MyRedisTemplate {
 		 */
 		public Boolean delete(String key) {
 				Boolean deleted = redisTemplate.delete(key);
-				if (deleted) {
-						System.out.println("🗑️ 已清除缓存: " + key);
+				if (Boolean.TRUE.equals(deleted)) {
+						log.debug("已清除缓存: {}", key);
 				}
 				return deleted;
 		}

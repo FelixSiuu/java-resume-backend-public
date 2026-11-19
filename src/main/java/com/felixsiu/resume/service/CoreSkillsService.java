@@ -2,13 +2,16 @@ package com.felixsiu.resume.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.felixsiu.resume.exception.BusinessException;
+import com.felixsiu.resume.model.ErrorMap;
 import com.felixsiu.resume.model.dto.SkillDto;
 import com.felixsiu.resume.model.entity.CoreSkills;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.model.vo.CoreSkillVo;
-import com.felixsiu.resume.respository.CoreSkillsMapper;
+import com.felixsiu.resume.repository.CoreSkillsMapper;
 import com.felixsiu.resume.utils.CacheKeys;
 import com.felixsiu.resume.utils.MyRedisTemplate;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -16,6 +19,7 @@ import org.springframework.util.StringUtils;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Service
 public class CoreSkillsService {
 		@Autowired
@@ -37,12 +41,12 @@ public class CoreSkillsService {
 				List<CoreSkillVo> cached = myRedisTemplate.get(cacheKey, new TypeReference<List<CoreSkillVo>>() {
 				});
 				if (cached != null) {
-						System.out.println("✅ 命中缓存！");
+						log.debug("cache hit");
 						return BaseVo.success(cached);
 				}
 				
 				// 2. 缓存未命中，查 MySQL
-				System.out.println("❌ 缓存未命中，查询数据库...");
+				log.debug("cache miss, querying DB");
 				
 				LambdaQueryWrapper<CoreSkills> lambdaQueryWrapper = new LambdaQueryWrapper<>();
 				lambdaQueryWrapper.eq(CoreSkills::getUserId, userId);
@@ -70,7 +74,7 @@ public class CoreSkillsService {
 		public BaseVo<Void> editSkill(Integer id, SkillDto skillDto, String userId) throws RuntimeException {
 				
 				if (skillDto == null || !StringUtils.hasText(skillDto.summary()) || !StringUtils.hasText(skillDto.details())) {
-						throw new RuntimeException("參數缺失");
+						throw new BusinessException(ErrorMap.MISSING_PARAM);
 				}
 				
 				String summary = skillDto.summary();
@@ -85,7 +89,7 @@ public class CoreSkillsService {
 				int res = coreSkillsMapper.updateById(coreSkills);
 				
 				if (res == 0) {
-						throw new RuntimeException("修改失敗，資料不存在或內容未變更");
+						throw new BusinessException(ErrorMap.CONTENT_UNCHANGED);
 				}
 				
 				myRedisTemplate.delete(CacheKeys.skills(userId));
@@ -104,7 +108,7 @@ public class CoreSkillsService {
 				int res = coreSkillsMapper.delete(lambdaQueryWrapper);
 				
 				if (res == 0) {
-						throw new RuntimeException("刪除失敗，資料不存在");
+						throw new BusinessException(ErrorMap.RESOURCE_NOT_FOUND);
 				}
 				
 				myRedisTemplate.delete(CacheKeys.skills(userId));
@@ -118,7 +122,7 @@ public class CoreSkillsService {
 		public BaseVo<Void> addSkill(SkillDto skillDto, String userId) throws RuntimeException {
 				
 				if (skillDto == null || !StringUtils.hasText(skillDto.summary()) || !StringUtils.hasText(skillDto.details())) {
-						throw new RuntimeException("參數缺失");
+						throw new BusinessException(ErrorMap.MISSING_PARAM);
 				}
 				
 				String summary = skillDto.summary();
@@ -131,7 +135,7 @@ public class CoreSkillsService {
 				int res = coreSkillsMapper.insert(coreSkills);
 				
 				if (res == 0) {
-						throw new RuntimeException("添加失敗");
+						throw new BusinessException(ErrorMap.CREATE_FAILED);
 				}
 				
 				myRedisTemplate.delete(CacheKeys.skills(userId));

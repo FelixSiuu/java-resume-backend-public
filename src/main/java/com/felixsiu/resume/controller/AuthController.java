@@ -15,8 +15,6 @@ import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.IOException;
-
 /**
  * 校驗接口
  */
@@ -50,7 +48,7 @@ public class AuthController {
 		@Operation(summary = "獲取圖形驗證碼")
 		public BaseVo<String> getCaptcha(
 						@Parameter(hidden = true) HttpSession httpSession
-		) throws IOException {
+		) {
 				return authService.createCaptcha(httpSession);
 		}
 		

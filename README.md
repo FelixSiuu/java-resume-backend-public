@@ -2,9 +2,9 @@
 
 個人履歷／作品集後端 API，供管理後台與公開作品站使用。
 
-技術棧：Java 17、Spring Boot 3.5、MyBatis-Plus、MySQL、Redis、Flyway、JWT（HttpOnly Cookie）+ XSRF、Spring Mail（SMTP 郵箱驗證／忘記密碼）。
+技術棧：Java 17、Spring Boot 3.5、MyBatis-Plus（JDBC／無 JPA）、MySQL、Redis、Flyway、JWT（HttpOnly Cookie）+ XSRF、Spring Mail（SMTP 郵箱驗證／忘記密碼）。
 
-版本：`2.3.0`
+版本：`2.3.1`
 
 ---
 
@@ -188,9 +188,9 @@ POST /auth/reset-password           { token, password }
 
 - 同一 email（正規化為小寫）**60 秒**內不可再次進入發信流程；無論上次有無實際寄信都寫入冷卻。
 - 剩餘秒數來自 **Redis TTL**（非 `email_token.create_time`）。
-- 冷卻中：`isSuccess: false`，data 為 `CoolDownVo`（欄位 `cd` = 剩餘秒數）。
-- 成功：`isSuccess: true`，亦帶 `cd: 60`，方便前端倒數。
-- Captcha 錯誤不寫入、不延長冷卻。
+- 冷卻中：**HTTP 429**，body 為 `BaseVo`（`isSuccess: false`、`code: RATE_LIMITED`），`data` 為 `CoolDownVo`（欄位 `cd` = 剩餘秒數）。
+- 成功：HTTP 200、`isSuccess: true`，亦帶 `cd: 60`，方便前端倒數。
+- Captcha 錯誤為 **400**（`INVALID_CAPTCHA`），不寫入、不延長冷卻。
 
 ### 與已登入改密的差異
 
@@ -200,6 +200,35 @@ POST /auth/reset-password           { token, password }
 | 身分證明 | 信箱內一次性 `RESET` token | Access Cookie + 舊密碼 |
 | 登入態 | 不需要 | 需要 |
 | 成功後 | 撤銷 refresh、清 Cookie | 同左 |
+
+---
+
+## 錯誤回應契約
+
+失敗時回傳**正確 HTTP status** + JSON `BaseVo`（與成功同一信封）：
+
+```json
+{
+  "isSuccess": false,
+  "code": "UNAUTHORIZED",
+  "message": "已過期，請重新登錄",
+  "data": null
+}
+```
+
+| HTTP | 典型 `code` | 前端建議 |
+|------|-------------|---------|
+| **400** | `VALIDATION_FAILED`、`INVALID_CAPTCHA`、`INVALID_CREDENTIALS`、`INVALID_TOKEN`… | 留在當頁顯示 `message` |
+| **401** | `UNAUTHORIZED`、`INVALID_REFRESH_TOKEN` | 導回重新登入 |
+| **403** | `FORBIDDEN`、`INVALID_XSRF` | 導回重新登入 |
+| **404** | `USER_NOT_FOUND`、`RESOURCE_NOT_FOUND`、`PROJECT_*` | 依情境提示 |
+| **409** | `EMAIL_TAKEN`、`USERNAME_TAKEN`、`SLUG_TAKEN`、`DUPLICATE_KEY` | 提示衝突 |
+| **429** | `RATE_LIMITED` | 讀 `data.cd` 倒數（如忘記密碼） |
+| **500** | `INTERNAL_ERROR`、`CREATE_FAILED`… | 通用錯誤提示 |
+
+- 業務失敗由 `BusinessException` + `ErrorMap` 拋出，經 `GlobalExceptionHandler` 組成回應；可覆寫 `message`，少數情況帶 `data`（如 429 的 `CoolDownVo`）。
+- Auth／XSRF **攔截器**失敗時也寫入同一套 `BaseVo` JSON（不再是空 body）。
+- `@Valid` 參數錯誤 → 400 `VALIDATION_FAILED`；DB 唯一鍵衝突未先預查 → 409 `DUPLICATE_KEY`。
 
 ---
 

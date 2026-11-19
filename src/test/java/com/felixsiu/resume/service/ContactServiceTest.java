@@ -6,7 +6,7 @@ import com.felixsiu.resume.model.dto.ContactDto;
 import com.felixsiu.resume.model.entity.Contact;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.model.vo.ContactVo;
-import com.felixsiu.resume.respository.ContactMapper;
+import com.felixsiu.resume.repository.ContactMapper;
 import com.felixsiu.resume.utils.CacheKeys;
 import com.felixsiu.resume.utils.MyRedisTemplate;
 import org.junit.jupiter.api.Test;

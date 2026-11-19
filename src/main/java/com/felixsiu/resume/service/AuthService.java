@@ -2,7 +2,9 @@ package com.felixsiu.resume.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.felixsiu.resume.config.CookieProperties;
+import com.felixsiu.resume.exception.BusinessException;
 import com.felixsiu.resume.model.EmailTokenMap;
+import com.felixsiu.resume.model.ErrorMap;
 import com.felixsiu.resume.model.dto.*;
 import com.felixsiu.resume.model.entity.EmailToken;
 import com.felixsiu.resume.model.entity.RefreshToken;
@@ -10,7 +12,7 @@ import com.felixsiu.resume.model.entity.User;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.model.vo.CoolDownVo;
 import com.felixsiu.resume.model.vo.LoginVo;
-import com.felixsiu.resume.respository.UserMapper;
+import com.felixsiu.resume.repository.UserMapper;
 import com.felixsiu.resume.service.account.AccountBaseService;
 import com.felixsiu.resume.utils.*;
 import com.google.code.kaptcha.impl.DefaultKaptcha;
@@ -18,6 +20,7 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -34,6 +37,7 @@ import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Service
 public class AuthService {
 		@Autowired
@@ -64,7 +68,7 @@ public class AuthService {
 		/**
 		 * 註冊
 		 */
-		public BaseVo<Void> register(RegisterDto registerDto) throws RuntimeException {
+		public BaseVo<Void> register(RegisterDto registerDto) {
 				String un = registerDto.username();
 				String pwd = registerDto.password();
 				String email = registerDto.email();
@@ -72,7 +76,7 @@ public class AuthService {
 				Long thisEmailCount = accountBaseService.countEmail(email);
 				
 				if (thisEmailCount > 0) {
-						throw new RuntimeException("該電子郵箱已被佔用");
+						throw new BusinessException(ErrorMap.EMAIL_TAKEN);
 				}
 				
 				LambdaQueryWrapper<User> lambdaQueryWrapper = new LambdaQueryWrapper<>();
@@ -80,7 +84,7 @@ public class AuthService {
 				boolean exists = userMapper.exists(lambdaQueryWrapper);
 				
 				if (exists) {
-						throw new RuntimeException("該用戶已存在");
+						throw new BusinessException(ErrorMap.USERNAME_TAKEN);
 				}
 				
 				User newUser = new User();
@@ -93,7 +97,7 @@ public class AuthService {
 				String userId = newUser.getId();
 				
 				if (res == 0 || userId == null) {
-						throw new RuntimeException("創建帳號失敗");
+						throw new BusinessException(ErrorMap.ACCOUNT_CREATE_FAILED);
 				}
 				
 				accountService.sendVerifyTokenEmail(email, userId, EmailTokenMap.VERIFY);
@@ -112,7 +116,7 @@ public class AuthService {
 				Boolean rememberMe = loginDto.rememberMe();
 				
 				if (!capt.equals(httpSession.getAttribute(captchaSessionName))) {
-						throw new RuntimeException("captcha 錯誤");
+						throw new BusinessException(ErrorMap.INVALID_CAPTCHA);
 				}
 				
 				httpSession.removeAttribute(captchaSessionName);
@@ -120,13 +124,13 @@ public class AuthService {
 				User foundUser = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUsername, un));
 				
 				if (foundUser == null || foundUser.getDeletedAt() != null) {
-						throw new RuntimeException("username 或 password錯誤");
+						throw new BusinessException(ErrorMap.INVALID_CREDENTIALS);
 				}
 				
 				boolean isPwdMatch = passwordEncoder.matches(pwd, foundUser.getPassword());
 				
 				if (!isPwdMatch) {
-						throw new RuntimeException("username 或 password錯誤");
+						throw new BusinessException(ErrorMap.INVALID_CREDENTIALS);
 				}
 				
 				String rawRefreshToken = RefreshTokenUtil.generate();
@@ -146,7 +150,7 @@ public class AuthService {
 						boolean isInsertRefreshToken = refreshTokenService.insert(refreshToken);
 						
 						if (!isInsertRefreshToken) {
-								throw new RuntimeException("refresh token 寫入失敗");
+								throw new BusinessException(ErrorMap.REFRESH_TOKEN_WRITE_FAILED);
 						}
 						
 						Integer accessTtlSeconds = cookieProperties.getAccessTtlSeconds();
@@ -168,25 +172,28 @@ public class AuthService {
 						return BaseVo.success(loginVo);
 						
 				} catch (NoSuchAlgorithmException e) {
-						throw new RuntimeException("refresh token 錯誤");
+						throw new BusinessException(ErrorMap.INVALID_REFRESH_TOKEN);
 				}
 		}
 		
 		/**
 		 * 獲取驗證碼
 		 */
-		public BaseVo<String> createCaptcha(HttpSession session) throws IOException {
-				
-				String text = defaultKaptcha.createText();
-				System.out.println("captcha text: " + text);
-				
-				session.setAttribute(captchaSessionName, text);
-				BufferedImage bufferedImage = defaultKaptcha.createImage(text);
-				ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
-				ImageIO.write(bufferedImage, "jpg", byteArrayOutputStream);
-				byte[] imageByteArray = byteArrayOutputStream.toByteArray();
-				
-				return BaseVo.success("data:image/jpeg;base64, " + Base64.getEncoder().encodeToString(imageByteArray));
+		public BaseVo<String> createCaptcha(HttpSession session) {
+				try {
+						String text = defaultKaptcha.createText();
+						
+						session.setAttribute(captchaSessionName, text);
+						BufferedImage bufferedImage = defaultKaptcha.createImage(text);
+						ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream();
+						ImageIO.write(bufferedImage, "jpg", byteArrayOutputStream);
+						byte[] imageByteArray = byteArrayOutputStream.toByteArray();
+						
+						return BaseVo.success("data:image/jpeg;base64, " + Base64.getEncoder().encodeToString(imageByteArray));
+				} catch (IOException e) {
+						log.error("Failed to generate captcha image", e);
+						throw new BusinessException(ErrorMap.CAPTCHA_GENERATE_FAILED);
+				}
 		}
 		
 		/**
@@ -195,7 +202,7 @@ public class AuthService {
 		public String getUserId(String username) {
 				
 				if (!StringUtils.hasText(username)) {
-						throw new RuntimeException("請輸入用戶名");
+						throw new BusinessException(ErrorMap.INVALID_CREDENTIALS, "請輸入用戶名");
 				}
 				
 				LambdaQueryWrapper<User> lambdaQueryWrapper = new LambdaQueryWrapper<>();
@@ -203,7 +210,7 @@ public class AuthService {
 				User user = userMapper.selectOne(lambdaQueryWrapper);
 				
 				if (user == null || user.getDeletedAt() != null) {
-						throw new RuntimeException("用戶不存在");
+						throw new BusinessException(ErrorMap.USER_NOT_FOUND, "用戶不存在");
 				}
 				
 				return user.getId();
@@ -239,7 +246,7 @@ public class AuthService {
 										refreshTokenService.revokeIfActive(t.getId(), null);  // tag revoked
 								}
 						} catch (NoSuchAlgorithmException e) {
-								throw new RuntimeException("refresh token 錯誤");
+								throw new BusinessException(ErrorMap.INVALID_REFRESH_TOKEN);
 						}
 				}
 				
@@ -260,9 +267,7 @@ public class AuthService {
 				String raw = extractRefreshCookie(request);
 				
 				if (!StringUtils.hasText(raw)) {
-						// no refresh token
-						response.setStatus(401);
-						return BaseVo.fail(null, "已過期，請重新登錄");
+						throw new BusinessException(ErrorMap.UNAUTHORIZED);
 				}
 				
 				try {
@@ -270,8 +275,7 @@ public class AuthService {
 						RefreshToken existingRefreshToken = refreshTokenService.selectOneByHash(hashRefreshToken);
 						
 						if (existingRefreshToken == null) {
-								response.setStatus(401);
-								return BaseVo.fail(null, "已過期，請重新登錄");
+								throw new BusinessException(ErrorMap.UNAUTHORIZED);
 						}
 						
 						Boolean isRevoked = existingRefreshToken.getRevoked();
@@ -280,7 +284,7 @@ public class AuthService {
 						User foundUser = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getId, userId));
 						
 						if (foundUser == null || foundUser.getDeletedAt() != null) {
-								throw new RuntimeException("找不到該用戶");
+								throw new BusinessException(ErrorMap.USER_NOT_FOUND);
 						}
 						
 						LocalDateTime expiresTime = existingRefreshToken.getExpiresAt();
@@ -290,14 +294,14 @@ public class AuthService {
 						
 						if (isRevoked) {
 								int result = refreshTokenService.revokeAllByUserId(userId);
-								if (result == 0) System.err.println("revoke all token failed");
-								response.setStatus(403);
-								return BaseVo.fail(null, "未經授權的活動");
+								if (result == 0) {
+										log.warn("revoke all token failed for userId={}", userId);
+								}
+								throw new BusinessException(ErrorMap.FORBIDDEN);
 						}
 						
 						if (expiresTime.isBefore(now)) {
-								response.setStatus(401);
-								return BaseVo.fail(null, "已過期，請重新登錄");
+								throw new BusinessException(ErrorMap.UNAUTHORIZED);
 						}
 						
 						String newRawRefreshToken = RefreshTokenUtil.generate();
@@ -313,7 +317,7 @@ public class AuthService {
 						boolean isInsertSuccess = refreshTokenService.insert(newRefreshToken);
 						
 						if (!isInsertSuccess) {
-								throw new RuntimeException("new refresh token 寫入失敗");
+								throw new BusinessException(ErrorMap.REFRESH_TOKEN_WRITE_FAILED, "new refresh token 寫入失敗");
 						}
 						
 						// tag existing refresh token revoked
@@ -321,9 +325,10 @@ public class AuthService {
 						
 						if (!isRevokedSuccess) {
 								int result = refreshTokenService.revokeAllByUserId(userId);
-								if (result == 0) System.err.println("revoke all token failed");
-								response.setStatus(403);
-								return BaseVo.fail(null, "未經授權的活動");
+								if (result == 0) {
+										log.warn("revoke all token failed for userId={}", userId);
+								}
+								throw new BusinessException(ErrorMap.FORBIDDEN);
 						}
 						
 						// write new token(access refresh xsrf) to response
@@ -333,8 +338,7 @@ public class AuthService {
 						long remainingSeconds = Duration.between(now, expiresTime).getSeconds();
 						
 						if (remainingSeconds <= 0) {
-								response.setStatus(401);
-								return BaseVo.fail(null, "已過期，請重新登錄");
+								throw new BusinessException(ErrorMap.UNAUTHORIZED);
 						}
 						
 						cookieService.writeTokenToCookie(
@@ -352,7 +356,7 @@ public class AuthService {
 						return BaseVo.success(loginVo);
 						
 				} catch (NoSuchAlgorithmException e) {
-						throw new RuntimeException("refresh token 錯誤");
+						throw new BusinessException(ErrorMap.INVALID_REFRESH_TOKEN);
 				}
 				
 		}
@@ -366,7 +370,7 @@ public class AuthService {
 		 */
 		private EmailToken findValidEmailToken(String rawToken, EmailTokenMap emailTokenMap) {
 				if (!StringUtils.hasText(rawToken)) {
-						throw new RuntimeException("token不能為空");
+						throw new BusinessException(ErrorMap.TOKEN_EMPTY);
 				}
 				
 				try {
@@ -378,13 +382,13 @@ public class AuthService {
 						);
 						
 						if (validTokenHash == null) {
-								throw new RuntimeException("token 無效或已失效");
+								throw new BusinessException(ErrorMap.INVALID_TOKEN);
 						}
 						
 						return validTokenHash;
 						
 				} catch (NoSuchAlgorithmException e) {
-						throw new RuntimeException("token 無效或已失效");
+						throw new BusinessException(ErrorMap.INVALID_TOKEN);
 				}
 		}
 		
@@ -404,19 +408,19 @@ public class AuthService {
 				String email = validTokenHash.getEmail();
 				
 				if (foundUser == null || foundUser.getEmail() == null || !foundUser.getEmail().equals(email)) {
-						throw new RuntimeException("token 無效或已失效");
+						throw new BusinessException(ErrorMap.INVALID_TOKEN);
 				}
 				
 				boolean updateHashUsedAtSuccess = emailTokenService.updateHashUsedAt(validTokenHash.getTokenHash());
 				
 				if (!updateHashUsedAtSuccess) {
-						throw new RuntimeException("驗證電子郵箱出現了錯誤");
+						throw new BusinessException(ErrorMap.EMAIL_VERIFY_FAILED);
 				}
 				
 				boolean updateEmailStatusSuccess = accountBaseService.updateEmailByPK(userId, email, LocalDateTime.now());
 				
 				if (!updateEmailStatusSuccess) {
-						throw new RuntimeException("更新電子郵箱狀態失敗");
+						throw new BusinessException(ErrorMap.UPDATE_FAILED, "更新電子郵箱狀態失敗");
 				}
 				
 				return BaseVo.success(null);
@@ -438,7 +442,7 @@ public class AuthService {
 				String cacheKey = CacheKeys.forgotPassword(email.toLowerCase());
 				
 				if (captcha == null || !captcha.equals(httpSession.getAttribute(captchaSessionName))) {
-						throw new RuntimeException("captcha 錯誤");
+						throw new BusinessException(ErrorMap.INVALID_CAPTCHA);
 				}
 				
 				httpSession.removeAttribute(captchaSessionName);
@@ -448,7 +452,7 @@ public class AuthService {
 				if (ttl != null && ttl > 0) {
 						CoolDownVo vo = new CoolDownVo();
 						vo.setCd(ttl);
-						return BaseVo.fail(vo, "Too many requests, please try again later.");
+						throw new BusinessException(ErrorMap.RATE_LIMITED, vo);
 				}
 				
 				User user = accountBaseService.selectByVerifiedEmail(email);
@@ -483,11 +487,11 @@ public class AuthService {
 				User foundUser = accountBaseService.selectByPK(userId);
 				
 				if (foundUser == null || foundUser.getDeletedAt() != null) {
-						throw new RuntimeException("token 無效或已失效");
+						throw new BusinessException(ErrorMap.INVALID_TOKEN);
 				}
 				
 				if (passwordEncoder.matches(dto.password(), foundUser.getPassword())) {
-						throw new RuntimeException("新舊密碼一致，不需要重置");
+						throw new BusinessException(ErrorMap.PASSWORD_UNCHANGED, "新舊密碼一致，不需要重置");
 				}
 				
 				String newPassword = passwordEncoder.encode(dto.password());
@@ -495,13 +499,13 @@ public class AuthService {
 				boolean isUpdateSuccess = accountBaseService.updatePasswordByPK(userId, newPassword);
 				
 				if (!isUpdateSuccess) {
-						throw new RuntimeException("更新密碼出現了錯誤");
+						throw new BusinessException(ErrorMap.UPDATE_FAILED, "更新密碼出現了錯誤");
 				}
 				
 				boolean updateHashUsedAtSuccess = emailTokenService.updateHashUsedAt(validTokenHash.getTokenHash());
 				
 				if (!updateHashUsedAtSuccess) {
-						throw new RuntimeException("更新密碼出現了錯誤");
+						throw new BusinessException(ErrorMap.UPDATE_FAILED, "更新密碼出現了錯誤");
 				}
 				
 				accountService.actionCallback(userId, response);
@@ -519,7 +523,7 @@ public class AuthService {
 				EmailToken validTokenHash = findValidEmailToken(dto.token(), EmailTokenMap.RESET);
 				User user = accountBaseService.selectByPK(validTokenHash.getUserId());
 				if (user == null || user.getDeletedAt() != null) {
-						throw new RuntimeException("token 無效或已失效");
+						throw new BusinessException(ErrorMap.INVALID_TOKEN);
 				}
 				return BaseVo.success(null);
 		}

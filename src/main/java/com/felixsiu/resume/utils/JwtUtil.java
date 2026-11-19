@@ -5,6 +5,7 @@ import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import io.jsonwebtoken.security.SignatureException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -21,6 +22,7 @@ import java.util.Date;
  * .compact() 最終生成 jwt
  */
 
+@Slf4j
 @Component
 public class JwtUtil {
 		
@@ -67,16 +69,13 @@ public class JwtUtil {
 						// ✅ 未過期才返回 true
 						return expiration.after(new Date());
 				} catch (ExpiredJwtException e) {
-						// Token 已過期
-						System.out.println("Token 已過期: " + e.getMessage());
+						log.debug("Token 已過期: {}", e.getMessage());
 						return false;
 				} catch (SignatureException e) {
-						// 簽名驗證失敗
-						System.out.println("Token 簽名無效: " + e.getMessage());
+						log.debug("Token 簽名無效: {}", e.getMessage());
 						return false;
 				} catch (Exception e) {
-						// 其他異常
-						System.out.println("Token 驗證失敗: " + e.getMessage());
+						log.debug("Token 驗證失敗: {}", e.getMessage());
 						return false;
 				}
 		}

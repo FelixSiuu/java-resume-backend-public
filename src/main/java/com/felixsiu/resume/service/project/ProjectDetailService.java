@@ -3,7 +3,7 @@ package com.felixsiu.resume.service.project;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.felixsiu.resume.model.entity.ProjectDetail;
-import com.felixsiu.resume.respository.ProjectDetailMapper;
+import com.felixsiu.resume.repository.ProjectDetailMapper;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -11,6 +11,7 @@ public class ProjectDetailService extends ServiceImpl<ProjectDetailMapper, Proje
 		
 		/**
 		 * query one detail
+		 *
 		 * @param projectId project id (PK fk projects.id)
 		 * @return detail entity
 		 */
@@ -20,6 +21,7 @@ public class ProjectDetailService extends ServiceImpl<ProjectDetailMapper, Proje
 		
 		/**
 		 * insert detail
+		 *
 		 * @param projectDetail detail entity
 		 * @return bool
 		 */
@@ -29,6 +31,7 @@ public class ProjectDetailService extends ServiceImpl<ProjectDetailMapper, Proje
 		
 		/**
 		 * update detail by id (PK)
+		 *
 		 * @param projectDetail detail entity
 		 * @return bool
 		 */

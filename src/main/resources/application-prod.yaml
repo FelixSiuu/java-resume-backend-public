@@ -16,9 +16,6 @@ spring:
     username: ${SPRING_DB_USERNAME}
     password: ${SPRING_DB_PWD}
     driver-class-name: com.mysql.cj.jdbc.Driver
-  jpa:
-    show-sql: false
-    open-in-view: false
   thymeleaf:
     prefix: classpath:/templates/
     suffix: .html
@@ -59,7 +56,7 @@ spring:
 logging:
   level:
     root: INFO
-    org.hibernate.SQL: WARN
+    com.felixsiu.resume: INFO
 mybatis:
   configuration:
     map-underscore-to-camel-case: true

@@ -4,7 +4,7 @@ import com.felixsiu.resume.model.dto.EduDto;
 import com.felixsiu.resume.model.entity.Education;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.model.vo.EducationVo;
-import com.felixsiu.resume.respository.EducationMapper;
+import com.felixsiu.resume.repository.EducationMapper;
 import com.felixsiu.resume.utils.MyRedisTemplate;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

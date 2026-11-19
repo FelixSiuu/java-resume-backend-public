@@ -3,7 +3,7 @@ package com.felixsiu.resume.service.project;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.felixsiu.resume.model.entity.Project;
-import com.felixsiu.resume.respository.ProjectsMapper;
+import com.felixsiu.resume.repository.ProjectsMapper;
 import org.springframework.stereotype.Service;
 
 import java.util.List;

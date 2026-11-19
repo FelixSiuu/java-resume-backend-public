@@ -6,7 +6,7 @@ import com.felixsiu.resume.model.dto.SkillDto;
 import com.felixsiu.resume.model.entity.CoreSkills;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.model.vo.CoreSkillVo;
-import com.felixsiu.resume.respository.CoreSkillsMapper;
+import com.felixsiu.resume.repository.CoreSkillsMapper;
 import com.felixsiu.resume.utils.CacheKeys;
 import com.felixsiu.resume.utils.MyRedisTemplate;
 import org.junit.jupiter.api.Test;
@@ -41,7 +41,7 @@ class CoreSkillsServiceTest {
 		
 		// ========== 測試數據工廠 ==========
 		private CoreSkills createSkill(Integer id, String summary, String details,
-						LocalDateTime createTime, LocalDateTime updateTime) {
+		                               LocalDateTime createTime, LocalDateTime updateTime) {
 				CoreSkills skill = new CoreSkills();
 				skill.setId(id);
 				skill.setUserId(userId);
@@ -53,7 +53,7 @@ class CoreSkillsServiceTest {
 		}
 		
 		private CoreSkillVo createSkillVo(Integer id, String summary, String details,
-						LocalDateTime createTime, LocalDateTime updateTime) {
+		                                  LocalDateTime createTime, LocalDateTime updateTime) {
 				CoreSkillVo vo = new CoreSkillVo();
 				vo.setId(id);
 				vo.setSummary(summary);
@@ -345,7 +345,7 @@ class CoreSkillsServiceTest {
 				// 執行 & 驗證
 				assertThatThrownBy(() -> coreSkillsService.deleteSkill(skillId, userId))
 								.isInstanceOf(RuntimeException.class)
-								.hasMessageContaining("刪除失敗");
+								.hasMessageContaining("資料不存在");
 				
 				verify(myRedisTemplate, never()).delete(anyString());
 		}

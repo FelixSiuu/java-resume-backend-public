@@ -1,4 +1,4 @@
-package com.felixsiu.resume.respository;
+package com.felixsiu.resume.repository;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.felixsiu.resume.model.entity.Contact;

@@ -16,9 +16,6 @@ spring:
     username: ${SPRING_DB_USERNAME}
     password: ${SPRING_DB_PWD}
     driver-class-name: com.mysql.cj.jdbc.Driver
-  jpa:
-    show-sql: true
-    open-in-view: false
   thymeleaf:
     prefix: classpath:/templates/
     suffix: .html
@@ -58,16 +55,12 @@ spring:
         timeout: 5000
 logging:
   level:
-    '[com.felixsiu.resume.repository]': DEBUG
-    org:
-      hibernate:
-        SQL: DEBUG
+    com.felixsiu.resume: DEBUG
+    com.felixsiu.resume.respository: DEBUG
 mybatis:
   configuration:
     map-underscore-to-camel-case: true #  開啟 MyBatis 駝峰命名自動轉換
 mybatis-plus:
-  configuration:
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
   mapper-locations: classpath:mapper/**/*.xml
 springdoc:
   api-docs:

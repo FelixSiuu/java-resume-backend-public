@@ -8,8 +8,8 @@ import com.felixsiu.resume.model.entity.KeyResponsibilities;
 import com.felixsiu.resume.model.entity.WorkingExperience;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.model.vo.WorkingExperienceVo;
-import com.felixsiu.resume.respository.KeyResponsibilitiesMapper;
-import com.felixsiu.resume.respository.WorkingExperienceMapper;
+import com.felixsiu.resume.repository.KeyResponsibilitiesMapper;
+import com.felixsiu.resume.repository.WorkingExperienceMapper;
 import com.felixsiu.resume.utils.CacheKeys;
 import com.felixsiu.resume.utils.MyRedisTemplate;
 import org.junit.jupiter.api.Test;
@@ -390,7 +390,7 @@ class WorkingExpServiceTest {
 				
 				assertThatThrownBy(() -> workingExpService.editWorkingExperiences(expId, dto, userId))
 								.isInstanceOf(RuntimeException.class)
-								.hasMessageContaining("修改失敗");
+								.hasMessageContaining("更新失敗");
 				
 				verify(myRedisTemplate, never()).delete(anyString());
 		}
@@ -446,7 +446,7 @@ class WorkingExpServiceTest {
 				
 				assertThatThrownBy(() -> workingExpService.deleteWorkingExperiences(expId, userId))
 								.isInstanceOf(RuntimeException.class)
-								.hasMessageContaining("刪除失敗");
+								.hasMessageContaining("資料不存在");
 				
 				verify(keyResponsibilitiesMapper, never()).delete(any(LambdaQueryWrapper.class));
 				verify(workingExperienceMapper, never()).delete(any(LambdaQueryWrapper.class));

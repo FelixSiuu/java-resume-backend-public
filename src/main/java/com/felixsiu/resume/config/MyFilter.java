@@ -2,6 +2,7 @@ package com.felixsiu.resume.config;
 
 import jakarta.servlet.*;
 import jakarta.servlet.http.HttpServletRequest;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
@@ -15,13 +16,14 @@ import java.io.IOException;
  * @WebFilter(urlPatterns = "") 和 @Component 一樣作為定義控制器的註解，兩者只能選其中一個，如果選擇了 @WebFilter 註解，代表沒有使用SprintBoot的註解，就需要在啟動類加上 @ServletComponentScan 註解，urlPatterns 為過濾器的作用範圍
  * 可以將ServletRequest強制轉化爲HttpServletRequest類型，使用更多api
  */
+@Slf4j
 @Component
 //@WebFilter(urlPatterns = "/*")
 @Order(1)
 public class MyFilter implements Filter {
 		@Override
 		public void init(FilterConfig filterConfig) {
-				System.out.println("過濾器初始化");
+				log.debug("過濾器初始化");
 		}
 		
 		@Override
@@ -37,7 +39,7 @@ public class MyFilter implements Filter {
 						return;
 				}
 				
-				System.out.println("過濾器過濾: " + "[" + method + "] " + path + " - 來自: " + remoteAddr);
+				log.debug("過濾器過濾: [{}] {} - 來自: {}", method, path, remoteAddr);
 				
 				// 繼續傳遞請求
 				chain.doFilter(request, response);
@@ -45,6 +47,6 @@ public class MyFilter implements Filter {
 		
 		@Override
 		public void destroy() {
-				System.out.println("過濾器銷毀");
+				log.debug("過濾器銷毀");
 		}
 }

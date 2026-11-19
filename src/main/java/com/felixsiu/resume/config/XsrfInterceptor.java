@@ -1,5 +1,7 @@
 package com.felixsiu.resume.config;
 
+import com.felixsiu.resume.exception.ErrorResponseWriter;
+import com.felixsiu.resume.model.ErrorMap;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -15,6 +17,8 @@ import java.security.MessageDigest;
 public class XsrfInterceptor implements HandlerInterceptor {
 		@Autowired
 		CookieProperties cookieProperties;
+		@Autowired
+		ErrorResponseWriter errorResponseWriter;
 		
 		@Override
 		public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
@@ -37,14 +41,14 @@ public class XsrfInterceptor implements HandlerInterceptor {
 				}
 				
 				if (!StringUtils.hasText(xsrfTokenFromHeader) || !StringUtils.hasText(xsrfTokenFromCookie)) {
-						response.setStatus(403);
+						errorResponseWriter.write(response, ErrorMap.INVALID_XSRF);
 						return false;
 				}
 				
 				if (!MessageDigest.isEqual(
 								xsrfTokenFromHeader.getBytes(StandardCharsets.UTF_8),
 								xsrfTokenFromCookie.getBytes(StandardCharsets.UTF_8))) {
-						response.setStatus(403);
+						errorResponseWriter.write(response, ErrorMap.INVALID_XSRF);
 						return false;
 				}
 				

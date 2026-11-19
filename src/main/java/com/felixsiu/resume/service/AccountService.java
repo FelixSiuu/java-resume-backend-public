@@ -1,6 +1,8 @@
 package com.felixsiu.resume.service;
 
 import com.felixsiu.resume.config.MailProperties;
+import com.felixsiu.resume.exception.BusinessException;
+import com.felixsiu.resume.model.ErrorMap;
 import com.felixsiu.resume.model.EmailTokenMap;
 import com.felixsiu.resume.model.dto.ChangePasswordDto;
 import com.felixsiu.resume.model.dto.EmailDto;
@@ -11,6 +13,7 @@ import com.felixsiu.resume.service.account.AccountBaseService;
 import com.felixsiu.resume.utils.EmailTokenUtil;
 import com.felixsiu.resume.utils.Sha256Hex;
 import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -21,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 
+@Slf4j
 @Service
 public class AccountService {
 		@Autowired
@@ -49,7 +53,7 @@ public class AccountService {
 				
 				int result = refreshTokenService.revokeAllByUserId(userId);
 				if (result == 0) {
-						System.err.println("revoke all token failed");
+						log.warn("revoke all token failed for userId={}", userId);
 				}
 		}
 		
@@ -62,7 +66,7 @@ public class AccountService {
 		public void sendVerifyTokenEmail(String toEmail, String userId, EmailTokenMap emailTokenMap) {
 				String purpose = emailTokenMap.getName();
 				int unusedTokenCount = emailTokenService.revokeUnusedByUserId(userId, purpose);
-				System.out.println("clean up unused token count: " + unusedTokenCount);
+				log.info("clean up unused token count: {}", unusedTokenCount);
 				
 				SimpleMailMessage simpleMailMessage = new SimpleMailMessage();
 				
@@ -73,7 +77,7 @@ public class AccountService {
 						boolean insertSuccess = emailTokenService.insert(tokenHash, toEmail, userId, purpose);
 						
 						if (!insertSuccess) {
-								throw new RuntimeException("獲取電子郵箱驗證碼失敗");
+								throw new BusinessException(ErrorMap.EMAIL_CODE_FAILED);
 						}
 						
 						String frontEndPath, textPrefix, subject;
@@ -104,7 +108,7 @@ public class AccountService {
 						javaMailSender.send(simpleMailMessage);
 						
 				} catch (NoSuchAlgorithmException e) {
-						throw new RuntimeException("獲取電子郵箱驗證碼失敗");
+						throw new BusinessException(ErrorMap.EMAIL_CODE_FAILED);
 				}
 		}
 		
@@ -120,7 +124,7 @@ public class AccountService {
 				User user = accountBaseService.selectByPK(userId);
 				
 				if (user == null) {
-						throw new RuntimeException("找不到該用戶");
+						throw new BusinessException(ErrorMap.USER_NOT_FOUND);
 				}
 				
 				String username = user.getUsername();
@@ -129,7 +133,7 @@ public class AccountService {
 				boolean deleteSuccess = accountBaseService.setAccountDeleteTime(userId, username, now);
 				
 				if (!deleteSuccess) {
-						throw new RuntimeException("刪除失敗");
+						throw new BusinessException(ErrorMap.DELETE_FAILED);
 				}
 				
 				actionCallback(userId, response);
@@ -150,7 +154,7 @@ public class AccountService {
 				User user = accountBaseService.selectByPK(userId);
 				
 				if (user == null) {
-						throw new RuntimeException("找不到該用戶");
+						throw new BusinessException(ErrorMap.USER_NOT_FOUND);
 				}
 				
 				String rawOldPassword = dto.oldPassword();
@@ -159,11 +163,11 @@ public class AccountService {
 				boolean isPwdMatch = passwordEncoder.matches(rawOldPassword, user.getPassword());
 				
 				if (!isPwdMatch) {
-						throw new RuntimeException("密碼錯誤，請重新輸入");
+						throw new BusinessException(ErrorMap.INVALID_CREDENTIALS, "密碼錯誤，請重新輸入");
 				}
 				
 				if (rawOldPassword.equals(rawNewPassword)) {
-						throw new RuntimeException("新舊密碼一致，請重新輸入");
+						throw new BusinessException(ErrorMap.PASSWORD_UNCHANGED);
 				}
 				
 				String newPassword = passwordEncoder.encode(rawNewPassword);
@@ -171,7 +175,7 @@ public class AccountService {
 				boolean updateSuccess = accountBaseService.updatePasswordByPK(userId, newPassword);
 				
 				if (!updateSuccess) {
-						throw new RuntimeException("更新密碼失敗");
+						throw new BusinessException(ErrorMap.UPDATE_FAILED, "更新密碼失敗");
 				}
 				
 				actionCallback(userId, response);
@@ -192,7 +196,7 @@ public class AccountService {
 				User foundUser = accountBaseService.selectByPK(userId);
 				
 				if (foundUser == null) {
-						throw new RuntimeException("找不到該用戶");
+						throw new BusinessException(ErrorMap.USER_NOT_FOUND);
 				}
 				
 				String newEmail = dto.email();
@@ -201,7 +205,7 @@ public class AccountService {
 				
 				if (newEmail.equals(existingEmail)) {
 						if (existingEmailVerifiedAt != null) {
-								throw new RuntimeException("該電子郵箱已驗證，無需重複綁定");
+								throw new BusinessException(ErrorMap.EMAIL_ALREADY_VERIFIED);
 						}
 						// same pending email → resend verification
 						sendVerifyTokenEmail(newEmail, userId, EmailTokenMap.VERIFY);
@@ -211,13 +215,13 @@ public class AccountService {
 				Long thisEmailCount = accountBaseService.countEmail(newEmail);
 				
 				if (thisEmailCount > 0) {
-						throw new RuntimeException("該電子郵箱已被佔用");
+						throw new BusinessException(ErrorMap.EMAIL_TAKEN);
 				}
 				
 				boolean updateSuccess = accountBaseService.updateEmailByPK(userId, newEmail, null);
 				
 				if (!updateSuccess) {
-						throw new RuntimeException("更新電子郵箱失敗");
+						throw new BusinessException(ErrorMap.UPDATE_FAILED, "更新電子郵箱失敗");
 				}
 				
 				sendVerifyTokenEmail(newEmail, userId, EmailTokenMap.VERIFY);
@@ -242,7 +246,7 @@ public class AccountService {
 				User foundUser = accountBaseService.selectByPK(userId);
 				
 				if (foundUser == null) {
-						throw new RuntimeException("找不到該用戶");
+						throw new BusinessException(ErrorMap.USER_NOT_FOUND);
 				}
 				
 				String email = foundUser.getEmail();

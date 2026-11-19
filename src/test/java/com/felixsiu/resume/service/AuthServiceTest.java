@@ -2,7 +2,9 @@ package com.felixsiu.resume.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.felixsiu.resume.config.CookieProperties;
+import com.felixsiu.resume.exception.BusinessException;
 import com.felixsiu.resume.model.EmailTokenMap;
+import com.felixsiu.resume.model.ErrorMap;
 import com.felixsiu.resume.model.dto.*;
 import com.felixsiu.resume.model.entity.EmailToken;
 import com.felixsiu.resume.model.entity.RefreshToken;
@@ -10,7 +12,7 @@ import com.felixsiu.resume.model.entity.User;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.model.vo.CoolDownVo;
 import com.felixsiu.resume.model.vo.LoginVo;
-import com.felixsiu.resume.respository.UserMapper;
+import com.felixsiu.resume.repository.UserMapper;
 import com.felixsiu.resume.service.account.AccountBaseService;
 import com.felixsiu.resume.utils.CacheKeys;
 import com.felixsiu.resume.utils.JwtUtil;
@@ -427,11 +429,13 @@ class AuthServiceTest {
 		void refresh_shouldFail401_whenNoRefreshCookie() {
 				when(httpServletRequest.getCookies()).thenReturn(null);
 				
-				BaseVo<LoginVo> result = authService.refreshToken(httpServletRequest, httpServletResponse);
-				
-				assertThat(result.getIsSuccess()).isFalse();
-				assertThat(result.getMessage()).contains("已過期");
-				verify(httpServletResponse).setStatus(401);
+				assertThatThrownBy(() -> authService.refreshToken(httpServletRequest, httpServletResponse))
+								.isInstanceOf(BusinessException.class)
+								.satisfies(ex -> {
+										BusinessException be = (BusinessException) ex;
+										assertThat(be.getCode()).isEqualTo(ErrorMap.UNAUTHORIZED.getCode());
+										assertThat(be.getMessage()).contains("已過期");
+								});
 				verify(refreshTokenService, never()).selectOneByHash(anyString());
 				verify(cookieService, never()).writeTokenToCookie(any(), any(), any(), any(), any(), any(), any());
 		}
@@ -442,11 +446,13 @@ class AuthServiceTest {
 				stubRefreshCookie(raw);
 				when(refreshTokenService.selectOneByHash(Sha256Hex.toHexString(raw))).thenReturn(null);
 				
-				BaseVo<LoginVo> result = authService.refreshToken(httpServletRequest, httpServletResponse);
-				
-				assertThat(result.getIsSuccess()).isFalse();
-				assertThat(result.getMessage()).contains("已過期");
-				verify(httpServletResponse).setStatus(401);
+				assertThatThrownBy(() -> authService.refreshToken(httpServletRequest, httpServletResponse))
+								.isInstanceOf(BusinessException.class)
+								.satisfies(ex -> {
+										BusinessException be = (BusinessException) ex;
+										assertThat(be.getCode()).isEqualTo(ErrorMap.UNAUTHORIZED.getCode());
+										assertThat(be.getMessage()).contains("已過期");
+								});
 				verify(refreshTokenService, never()).insert(any());
 				verify(cookieService, never()).writeTokenToCookie(any(), any(), any(), any(), any(), any(), any());
 		}
@@ -465,11 +471,13 @@ class AuthServiceTest {
 				stubActiveUser(userId, "felix");
 				when(refreshTokenService.revokeAllByUserId(userId)).thenReturn(1);
 				
-				BaseVo<LoginVo> result = authService.refreshToken(httpServletRequest, httpServletResponse);
-				
-				assertThat(result.getIsSuccess()).isFalse();
-				assertThat(result.getMessage()).contains("未經授權");
-				verify(httpServletResponse).setStatus(403);
+				assertThatThrownBy(() -> authService.refreshToken(httpServletRequest, httpServletResponse))
+								.isInstanceOf(BusinessException.class)
+								.satisfies(ex -> {
+										BusinessException be = (BusinessException) ex;
+										assertThat(be.getCode()).isEqualTo(ErrorMap.FORBIDDEN.getCode());
+										assertThat(be.getMessage()).contains("未經授權");
+								});
 				verify(refreshTokenService).revokeAllByUserId(userId);
 				verify(refreshTokenService, never()).insert(any());
 				verify(cookieService, never()).writeTokenToCookie(any(), any(), any(), any(), any(), any(), any());
@@ -488,11 +496,13 @@ class AuthServiceTest {
 				when(refreshTokenService.selectOneByHash(Sha256Hex.toHexString(raw))).thenReturn(existing);
 				stubActiveUser(userId, "felix");
 				
-				BaseVo<LoginVo> result = authService.refreshToken(httpServletRequest, httpServletResponse);
-				
-				assertThat(result.getIsSuccess()).isFalse();
-				assertThat(result.getMessage()).contains("已過期");
-				verify(httpServletResponse).setStatus(401);
+				assertThatThrownBy(() -> authService.refreshToken(httpServletRequest, httpServletResponse))
+								.isInstanceOf(BusinessException.class)
+								.satisfies(ex -> {
+										BusinessException be = (BusinessException) ex;
+										assertThat(be.getCode()).isEqualTo(ErrorMap.UNAUTHORIZED.getCode());
+										assertThat(be.getMessage()).contains("已過期");
+								});
 				verify(refreshTokenService, never()).insert(any());
 				verify(cookieService, never()).writeTokenToCookie(any(), any(), any(), any(), any(), any(), any());
 		}
@@ -654,11 +664,13 @@ class AuthServiceTest {
 				when(refreshTokenService.revokeIfActive(oldId, newId)).thenReturn(false);
 				when(refreshTokenService.revokeAllByUserId(userId)).thenReturn(2);
 				
-				BaseVo<LoginVo> result = authService.refreshToken(httpServletRequest, httpServletResponse);
-				
-				assertThat(result.getIsSuccess()).isFalse();
-				assertThat(result.getMessage()).contains("未經授權");
-				verify(httpServletResponse).setStatus(403);
+				assertThatThrownBy(() -> authService.refreshToken(httpServletRequest, httpServletResponse))
+								.isInstanceOf(BusinessException.class)
+								.satisfies(ex -> {
+										BusinessException be = (BusinessException) ex;
+										assertThat(be.getCode()).isEqualTo(ErrorMap.FORBIDDEN.getCode());
+										assertThat(be.getMessage()).contains("未經授權");
+								});
 				verify(refreshTokenService).revokeAllByUserId(userId);
 				verify(cookieService, never()).writeTokenToCookie(any(), any(), any(), any(), any(), any(), any());
 		}
@@ -948,15 +960,18 @@ class AuthServiceTest {
 				when(httpSession.getAttribute("captcha")).thenReturn("ABC123");
 				when(myRedisTemplate.getExpire(cacheKey, TimeUnit.SECONDS)).thenReturn(42L);
 				
-				BaseVo<CoolDownVo> result = authService.forgotPassword(
+				assertThatThrownBy(() -> authService.forgotPassword(
 								httpSession,
 								new ForgotPasswordDto(email, "ABC123")
-				);
-				
-				assertThat(result.getIsSuccess()).isFalse();
-				assertThat(result.getMessage()).contains("Too many requests");
-				assertThat(result.getData()).isNotNull();
-				assertThat(result.getData().getCd()).isEqualTo(42L);
+				))
+								.isInstanceOf(BusinessException.class)
+								.satisfies(ex -> {
+										BusinessException be = (BusinessException) ex;
+										assertThat(be.getCode()).isEqualTo(ErrorMap.RATE_LIMITED.getCode());
+										assertThat(be.getMessage()).contains("Too many requests");
+										assertThat(be.getData()).isInstanceOf(CoolDownVo.class);
+										assertThat(((CoolDownVo) be.getData()).getCd()).isEqualTo(42L);
+								});
 				
 				verify(accountBaseService, never()).selectByVerifiedEmail(anyString());
 				verify(accountService, never()).sendVerifyTokenEmail(anyString(), anyString(), any());

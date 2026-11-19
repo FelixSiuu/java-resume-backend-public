@@ -2,18 +2,22 @@ package com.felixsiu.resume.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.felixsiu.resume.exception.BusinessException;
+import com.felixsiu.resume.model.ErrorMap;
 import com.felixsiu.resume.model.dto.ContactDto;
 import com.felixsiu.resume.model.entity.Contact;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.model.vo.ContactVo;
-import com.felixsiu.resume.respository.ContactMapper;
+import com.felixsiu.resume.repository.ContactMapper;
 import com.felixsiu.resume.utils.CacheKeys;
 import com.felixsiu.resume.utils.MyRedisTemplate;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Service
 public class ContactService {
 		
@@ -36,12 +40,12 @@ public class ContactService {
 				ContactVo cached = myRedisTemplate.get(cacheKey, new TypeReference<ContactVo>() {
 				});
 				if (cached != null) {
-						System.out.println("✅ 命中缓存！");
+						log.debug("cache hit");
 						return BaseVo.success(cached);
 				}
 				
 				// 2. 缓存未命中，查 MySQL
-				System.out.println("❌ 缓存未命中，查询数据库...");
+				log.debug("cache miss, querying DB");
 				
 				LambdaQueryWrapper<Contact> lambdaQueryWrapper = new LambdaQueryWrapper<>();
 				lambdaQueryWrapper.eq(Contact::getUserId, userId);
@@ -65,7 +69,7 @@ public class ContactService {
 		public BaseVo<Void> updateContact(String userId, ContactDto contactDto) throws RuntimeException {
 				
 				if (contactDto == null) {
-						throw new RuntimeException("參數缺失");
+						throw new BusinessException(ErrorMap.MISSING_PARAM);
 				}
 				
 				LambdaQueryWrapper<Contact> lambdaQueryWrapper = new LambdaQueryWrapper<>();
@@ -79,14 +83,14 @@ public class ContactService {
 						int res = contactMapper.insert(contact);
 						
 						if (res == 0) {
-								throw new RuntimeException("修改失敗，資料不存在或內容未變更");
+								throw new BusinessException(ErrorMap.CONTENT_UNCHANGED);
 						}
 				} else {
 						contact.setId(existing.getId());
 						int res = contactMapper.updateById(contact);
 						
 						if (res == 0) {
-								throw new RuntimeException("修改失敗，資料不存在或內容未變更");
+								throw new BusinessException(ErrorMap.CONTENT_UNCHANGED);
 						}
 				}
 				

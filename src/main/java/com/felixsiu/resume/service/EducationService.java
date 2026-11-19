@@ -2,13 +2,16 @@ package com.felixsiu.resume.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.felixsiu.resume.exception.BusinessException;
+import com.felixsiu.resume.model.ErrorMap;
 import com.felixsiu.resume.model.dto.EduDto;
 import com.felixsiu.resume.model.entity.Education;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.model.vo.EducationVo;
-import com.felixsiu.resume.respository.EducationMapper;
+import com.felixsiu.resume.repository.EducationMapper;
 import com.felixsiu.resume.utils.CacheKeys;
 import com.felixsiu.resume.utils.MyRedisTemplate;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -16,6 +19,7 @@ import org.springframework.util.StringUtils;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Service
 public class EducationService {
 		@Autowired
@@ -37,12 +41,12 @@ public class EducationService {
 				List<EducationVo> cached = myRedisTemplate.get(cacheKey, new TypeReference<List<EducationVo>>() {
 				});
 				if (cached != null) {
-						System.out.println("✅ 命中缓存！");
+						log.debug("cache hit");
 						return BaseVo.success(cached);
 				}
 				
 				// 2. 缓存未命中，查 MySQL
-				System.out.println("❌ 缓存未命中，查询数据库...");
+				log.debug("cache miss, querying DB");
 				
 				LambdaQueryWrapper<Education> eLambdaQueryWrapper = new LambdaQueryWrapper<>();
 				eLambdaQueryWrapper.eq(Education::getUserId, userId).orderByDesc(Education::getId);
@@ -73,7 +77,7 @@ public class EducationService {
 		public BaseVo<Void> editEducation(Integer id, EduDto eduDto, String userId) throws RuntimeException {
 				
 				if (isPostBodyNotOk(eduDto)) {
-						throw new RuntimeException("參數缺失");
+						throw new BusinessException(ErrorMap.MISSING_PARAM);
 				}
 				
 				Education education = new Education();
@@ -89,7 +93,7 @@ public class EducationService {
 				int res = educationMapper.updateById(education);
 				
 				if (res == 0) {
-						throw new RuntimeException("修改失敗，資料不存在或內容未變更");
+						throw new BusinessException(ErrorMap.CONTENT_UNCHANGED);
 				}
 				
 				myRedisTemplate.delete(CacheKeys.education(userId));
@@ -103,7 +107,7 @@ public class EducationService {
 		public BaseVo<Void> addEducation(EduDto eduDto, String userId) throws RuntimeException {
 				
 				if (isPostBodyNotOk(eduDto)) {
-						throw new RuntimeException("參數缺失");
+						throw new BusinessException(ErrorMap.MISSING_PARAM);
 				}
 				
 				Education education = new Education();
@@ -118,7 +122,7 @@ public class EducationService {
 				int res = educationMapper.insert(education);
 				
 				if (res == 0) {
-						throw new RuntimeException("添加失敗");
+						throw new BusinessException(ErrorMap.CREATE_FAILED);
 				}
 				
 				myRedisTemplate.delete(CacheKeys.education(userId));
@@ -136,7 +140,7 @@ public class EducationService {
 				int res = educationMapper.delete(lambdaQueryWrapper);
 				
 				if (res == 0) {
-						throw new RuntimeException("刪除失敗，資料不存在");
+						throw new BusinessException(ErrorMap.RESOURCE_NOT_FOUND);
 				}
 				
 				myRedisTemplate.delete(CacheKeys.education(userId));

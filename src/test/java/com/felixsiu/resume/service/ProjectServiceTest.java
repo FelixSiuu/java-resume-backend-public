@@ -291,7 +291,7 @@ class ProjectServiceTest {
 				
 				assertThatThrownBy(() -> projectService.editProject(userId, "slug-1", dto))
 								.isInstanceOf(RuntimeException.class)
-								.hasMessageContaining("找不到對應的項目");
+								.hasMessageContaining("未找到對應項目");
 				
 				verify(projectBaseService, never()).updateByPK(any());
 				verifyNoInteractions(projectDetailService, projectStacksService);
@@ -340,7 +340,7 @@ class ProjectServiceTest {
 				
 				assertThatThrownBy(() -> projectService.editProject(userId, "slug-1", dto))
 								.isInstanceOf(RuntimeException.class)
-								.hasMessageContaining("找不到對應的項目細節");
+								.hasMessageContaining("未找到對應項目詳情");
 				
 				verify(projectDetailService, never()).updateByPK(any());
 				verifyNoInteractions(projectStacksService);
@@ -425,7 +425,7 @@ class ProjectServiceTest {
 				
 				assertThatThrownBy(() -> projectService.deleteProject(userId, "slug-1"))
 								.isInstanceOf(RuntimeException.class)
-								.hasMessageContaining("刪除失敗，資料不存在");
+								.hasMessageContaining("資料不存在");
 				
 				verify(projectBaseService, never()).deleteByPKAndUser(any(), any());
 		}

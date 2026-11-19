@@ -27,8 +27,8 @@ public class BaseVo<T> {
 		public static <F> BaseVo<F> fail(String code, String message) {
 				return new BaseVo<>(false, code, message, null);
 		}
-		
-		public static <F> BaseVo<F> fail(F data, String message) {
-				return new BaseVo<>(false, "FAILED", message, data);
+
+		public static <F> BaseVo<F> fail(String code, String message, F data) {
+				return new BaseVo<>(false, code, message, data);
 		}
 }
