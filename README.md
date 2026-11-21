@@ -2,7 +2,7 @@
 
 個人履歷／作品集後端 API，供管理後台與公開作品站使用。
 
-技術棧：Java 17、Spring Boot 3.5、MyBatis-Plus（JDBC／無 JPA）、MySQL、Redis、Flyway、JWT（HttpOnly Cookie）+ XSRF、Spring Mail（SMTP 郵箱驗證／忘記密碼）。
+技術棧：Java 17、Spring Boot 3.5、MyBatis-Plus（`mybatis-plus-spring-boot3-starter`／無 JPA）、MySQL、Redis、Flyway、JWT（HttpOnly Cookie）+ XSRF、Spring Mail（SMTP 郵箱驗證／忘記密碼）。
 
 版本：`2.3.1`
 

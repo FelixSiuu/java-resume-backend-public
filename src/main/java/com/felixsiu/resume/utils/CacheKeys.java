@@ -1,5 +1,7 @@
 package com.felixsiu.resume.utils;
 
+import java.util.List;
+
 public class CacheKeys {
 		
 		private static final String PREFIX = "user:";
@@ -32,17 +34,22 @@ public class CacheKeys {
 				return PREFIX + "forgot-password:" + email;
 		}
 		
+		public static String deleteToken(String userId) {
+				return PREFIX + "delete-token:" + userId;
+		}
+		
 		/**
-		 * 批量删除某个用户的所有缓存
+		 * 獲取某个用户的所有缓存 key
 		 */
-		public static String[] allUserKeys(String userId) {
-				return new String[]{
+		public static List<String> allUserKeys(String userId) {
+				return List.of(
 								about(userId),
 								education(userId),
 								skills(userId),
 								experience(userId),
 								contact(userId),
-								projects(userId)
-				};
+								projects(userId),
+								deleteToken(userId)
+				);
 		}
 }

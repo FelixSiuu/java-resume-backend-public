@@ -14,6 +14,7 @@ import com.felixsiu.resume.model.vo.CoolDownVo;
 import com.felixsiu.resume.model.vo.LoginVo;
 import com.felixsiu.resume.repository.UserMapper;
 import com.felixsiu.resume.service.account.AccountBaseService;
+import com.felixsiu.resume.service.emailtoken.EmailTokenBaseService;
 import com.felixsiu.resume.utils.*;
 import com.google.code.kaptcha.impl.DefaultKaptcha;
 import jakarta.servlet.http.Cookie;
@@ -55,13 +56,13 @@ public class AuthService {
 		@Autowired
 		CookieService cookieService;
 		@Autowired
-		EmailTokenService emailTokenService;
-		@Autowired
 		AccountBaseService accountBaseService;
 		@Autowired
-		AccountService accountService;
-		@Autowired
 		MyRedisTemplate myRedisTemplate;
+		@Autowired
+		EmailTokenBaseService emailTokenBaseService;
+		@Autowired
+		EmailTokenService emailTokenService;
 		
 		private final String captchaSessionName = "captcha";
 		
@@ -100,7 +101,7 @@ public class AuthService {
 						throw new BusinessException(ErrorMap.ACCOUNT_CREATE_FAILED);
 				}
 				
-				accountService.sendVerifyTokenEmail(email, userId, EmailTokenMap.VERIFY);
+				emailTokenService.sendVerifyTokenEmail(email, userId, EmailTokenMap.VERIFY);
 				
 				return BaseVo.success(null);
 		}
@@ -362,37 +363,6 @@ public class AuthService {
 		}
 		
 		/**
-		 * find valid token hash (reset or verify)
-		 *
-		 * @param rawToken      raw token
-		 * @param emailTokenMap enum EmailTokenMap
-		 * @return EmailToken
-		 */
-		private EmailToken findValidEmailToken(String rawToken, EmailTokenMap emailTokenMap) {
-				if (!StringUtils.hasText(rawToken)) {
-						throw new BusinessException(ErrorMap.TOKEN_EMPTY);
-				}
-				
-				try {
-						String tokenHash = Sha256Hex.toHexString(rawToken);
-						
-						EmailToken validTokenHash = emailTokenService.findByValidHash(
-										tokenHash,
-										emailTokenMap.getName()
-						);
-						
-						if (validTokenHash == null) {
-								throw new BusinessException(ErrorMap.INVALID_TOKEN);
-						}
-						
-						return validTokenHash;
-						
-				} catch (NoSuchAlgorithmException e) {
-						throw new BusinessException(ErrorMap.INVALID_TOKEN);
-				}
-		}
-		
-		/**
 		 * verify email
 		 *
 		 * @param dto email from front end
@@ -400,7 +370,7 @@ public class AuthService {
 		 */
 		@Transactional(rollbackFor = Exception.class)
 		public BaseVo<Void> verifyEmail(ValidateEmailTokenDto dto) {
-				EmailToken validTokenHash = findValidEmailToken(dto.token(), EmailTokenMap.VERIFY);
+				EmailToken validTokenHash = emailTokenService.findValidEmailToken(dto.token(), EmailTokenMap.VERIFY);
 				
 				String userId = validTokenHash.getUserId();
 				
@@ -411,7 +381,7 @@ public class AuthService {
 						throw new BusinessException(ErrorMap.INVALID_TOKEN);
 				}
 				
-				boolean updateHashUsedAtSuccess = emailTokenService.updateHashUsedAt(validTokenHash.getTokenHash());
+				boolean updateHashUsedAtSuccess = emailTokenBaseService.updateHashUsedAt(validTokenHash.getTokenHash());
 				
 				if (!updateHashUsedAtSuccess) {
 						throw new BusinessException(ErrorMap.EMAIL_VERIFY_FAILED);
@@ -460,7 +430,7 @@ public class AuthService {
 				if (user != null) {
 						String toEmail = user.getEmail();
 						String userId = user.getId();
-						accountService.sendVerifyTokenEmail(toEmail, userId, EmailTokenMap.RESET);
+						emailTokenService.sendVerifyTokenEmail(toEmail, userId, EmailTokenMap.RESET);
 				}
 				
 				myRedisTemplate.set(cacheKey, "1", CACHE_TTL, CACHE_TTL_UNIT);
@@ -472,6 +442,21 @@ public class AuthService {
 		}
 		
 		/**
+		 * reset password token pre-check
+		 *
+		 * @param dto ValidateEmailTokenDto
+		 * @return void
+		 */
+		public BaseVo<Void> validateResetToken(ValidateEmailTokenDto dto) {
+				EmailToken validTokenHash = emailTokenService.findValidEmailToken(dto.token(), EmailTokenMap.RESET);
+				User user = accountBaseService.selectByPK(validTokenHash.getUserId());
+				if (user == null) {
+						throw new BusinessException(ErrorMap.INVALID_TOKEN);
+				}
+				return BaseVo.success(null);
+		}
+		
+		/**
 		 * reset password, clean cookie
 		 *
 		 * @param dto      ResetPasswordDto
@@ -480,13 +465,13 @@ public class AuthService {
 		 */
 		@Transactional(rollbackFor = Exception.class)
 		public BaseVo<Void> resetPassword(ResetPasswordDto dto, HttpServletResponse response) {
-				EmailToken validTokenHash = findValidEmailToken(dto.token(), EmailTokenMap.RESET);
+				EmailToken validTokenHash = emailTokenService.findValidEmailToken(dto.token(), EmailTokenMap.RESET);
 				
 				String userId = validTokenHash.getUserId();
 				
 				User foundUser = accountBaseService.selectByPK(userId);
 				
-				if (foundUser == null || foundUser.getDeletedAt() != null) {
+				if (foundUser == null) {
 						throw new BusinessException(ErrorMap.INVALID_TOKEN);
 				}
 				
@@ -502,30 +487,68 @@ public class AuthService {
 						throw new BusinessException(ErrorMap.UPDATE_FAILED, "更新密碼出現了錯誤");
 				}
 				
-				boolean updateHashUsedAtSuccess = emailTokenService.updateHashUsedAt(validTokenHash.getTokenHash());
+				boolean updateHashUsedAtSuccess = emailTokenBaseService.updateHashUsedAt(validTokenHash.getTokenHash());
 				
 				if (!updateHashUsedAtSuccess) {
 						throw new BusinessException(ErrorMap.UPDATE_FAILED, "更新密碼出現了錯誤");
 				}
 				
-				accountService.actionCallback(userId, response);
+				invalidateSession(userId, response);
 				
 				return BaseVo.success(null);
 		}
 		
 		/**
-		 * reset password token check
+		 * Clear auth cookies and revoke all refresh tokens for the user
+		 * (e.g. after password change / reset / account deletion).
 		 *
-		 * @param dto ValidateEmailTokenDto
-		 * @return void
+		 * @param userId   user id
+		 * @param response HttpServletResponse
 		 */
-		public BaseVo<Void> validateResetToken(ValidateEmailTokenDto dto) {
-				EmailToken validTokenHash = findValidEmailToken(dto.token(), EmailTokenMap.RESET);
-				User user = accountBaseService.selectByPK(validTokenHash.getUserId());
-				if (user == null || user.getDeletedAt() != null) {
-						throw new BusinessException(ErrorMap.INVALID_TOKEN);
+		public void invalidateSession(String userId, HttpServletResponse response) {
+				cookieService.clearTokenCookies(response);
+				
+				int result = refreshTokenService.revokeAllByUserId(userId);
+				if (result == 0) {
+						log.warn("revoke all token failed for userId={}", userId);
 				}
-				return BaseVo.success(null);
 		}
 		
+		/**
+		 * get delete account token
+		 *
+		 * @return CoolDownVo (cooldown seconds)
+		 */
+		public BaseVo<CoolDownVo> getDeleteToken(String userId) {
+				final long CACHE_TTL = 60;
+				final TimeUnit CACHE_TTL_UNIT = TimeUnit.SECONDS;
+				String cacheKey = CacheKeys.deleteToken(userId);
+				
+				Long ttl = myRedisTemplate.getExpire(cacheKey, CACHE_TTL_UNIT);
+				
+				if (ttl != null && ttl > 0) {
+						CoolDownVo vo = new CoolDownVo();
+						vo.setCd(ttl);
+						throw new BusinessException(ErrorMap.RATE_LIMITED, vo);
+				}
+				
+				User user = accountBaseService.selectByPK(userId);
+				
+				if (user == null) {
+						throw new BusinessException(ErrorMap.USER_NOT_FOUND);
+				} else if (user.getEmail() == null) {
+						throw new BusinessException(ErrorMap.EMAIL_MISSING);
+				} else if (user.getEmailVerifiedAt() == null) {
+						throw new BusinessException(ErrorMap.EMAIL_NOT_VERIFIED);
+				}
+				
+				emailTokenService.sendVerifyTokenEmail(user.getEmail(), userId, EmailTokenMap.DELETE);
+				
+				myRedisTemplate.set(cacheKey, "1", CACHE_TTL, CACHE_TTL_UNIT);
+				
+				CoolDownVo coolDownVo = new CoolDownVo();
+				coolDownVo.setCd(60);
+				
+				return BaseVo.success(coolDownVo, "If this email is registered and verified, we have sent a confirmation code to your email.");
+		}
 }

@@ -1,27 +1,26 @@
 package com.felixsiu.resume.service;
 
-import com.felixsiu.resume.config.MailProperties;
 import com.felixsiu.resume.exception.BusinessException;
-import com.felixsiu.resume.model.ErrorMap;
 import com.felixsiu.resume.model.EmailTokenMap;
+import com.felixsiu.resume.model.ErrorMap;
 import com.felixsiu.resume.model.dto.ChangePasswordDto;
+import com.felixsiu.resume.model.dto.DeleteAccountDto;
 import com.felixsiu.resume.model.dto.EmailDto;
+import com.felixsiu.resume.model.entity.EmailToken;
 import com.felixsiu.resume.model.entity.User;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.model.vo.EmailVo;
 import com.felixsiu.resume.service.account.AccountBaseService;
-import com.felixsiu.resume.utils.EmailTokenUtil;
-import com.felixsiu.resume.utils.Sha256Hex;
+import com.felixsiu.resume.service.emailtoken.EmailTokenBaseService;
+import com.felixsiu.resume.utils.CacheKeys;
+import com.felixsiu.resume.utils.MyRedisTemplate;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 
 @Slf4j
@@ -32,85 +31,13 @@ public class AccountService {
 		@Autowired
 		private BCryptPasswordEncoder passwordEncoder;
 		@Autowired
-		private CookieService cookieService;
-		@Autowired
-		private RefreshTokenService refreshTokenService;
+		private AuthService authService;
 		@Autowired
 		private EmailTokenService emailTokenService;
 		@Autowired
-		private MailProperties mailProperties;
+		private EmailTokenBaseService emailTokenBaseService;
 		@Autowired
-		private JavaMailSender javaMailSender;
-		
-		/**
-		 * clean 3 tokens & revoke db refresh token
-		 *
-		 * @param userId   user id
-		 * @param response HttpServletResponse
-		 */
-		public void actionCallback(String userId, HttpServletResponse response) {
-				cookieService.clearTokenCookies(response);
-				
-				int result = refreshTokenService.revokeAllByUserId(userId);
-				if (result == 0) {
-						log.warn("revoke all token failed for userId={}", userId);
-				}
-		}
-		
-		/**
-		 * call JavaMailSender send email ( for email verification )
-		 *
-		 * @param toEmail receiver
-		 * @param userId  user id
-		 */
-		public void sendVerifyTokenEmail(String toEmail, String userId, EmailTokenMap emailTokenMap) {
-				String purpose = emailTokenMap.getName();
-				int unusedTokenCount = emailTokenService.revokeUnusedByUserId(userId, purpose);
-				log.info("clean up unused token count: {}", unusedTokenCount);
-				
-				SimpleMailMessage simpleMailMessage = new SimpleMailMessage();
-				
-				try {
-						String rawEmailToken = EmailTokenUtil.generate();
-						String tokenHash = Sha256Hex.toHexString(rawEmailToken);
-						
-						boolean insertSuccess = emailTokenService.insert(tokenHash, toEmail, userId, purpose);
-						
-						if (!insertSuccess) {
-								throw new BusinessException(ErrorMap.EMAIL_CODE_FAILED);
-						}
-						
-						String frontEndPath, textPrefix, subject;
-						switch (emailTokenMap) {
-								case VERIFY:
-										frontEndPath = "/verify-email";
-										textPrefix = "Email Verification Link: ";
-										subject = "Email Verification 電子郵箱驗證";
-										break;
-								case RESET:
-										frontEndPath = "/reset-password";
-										textPrefix = "Reset Password Link: ";
-										subject = "Reset Password 重設密碼";
-										break;
-								default:
-										frontEndPath = "";
-										textPrefix = "";
-										subject = "";
-						}
-						;
-						
-						String text = textPrefix + mailProperties.getFrontendBaseUrl() + frontEndPath + "?token=" + rawEmailToken + " The link expires in " + EmailTokenService.tokenExpiresInMinutes + " minutes.";
-						simpleMailMessage.setSubject(subject);
-						simpleMailMessage.setFrom(mailProperties.getFrom());
-						simpleMailMessage.setTo(toEmail);
-						simpleMailMessage.setText(text);
-						
-						javaMailSender.send(simpleMailMessage);
-						
-				} catch (NoSuchAlgorithmException e) {
-						throw new BusinessException(ErrorMap.EMAIL_CODE_FAILED);
-				}
-		}
+		private MyRedisTemplate myRedisTemplate;
 		
 		/**
 		 * set account delete time,
@@ -120,11 +47,20 @@ public class AccountService {
 		 * @return void
 		 */
 		@Transactional(rollbackFor = Exception.class)
-		public BaseVo<Void> deleteAccount(String userId, HttpServletResponse response) {
+		public BaseVo<Void> deleteAccount(String userId, HttpServletResponse response, DeleteAccountDto dto) {
+				EmailToken validToken = emailTokenService.findValidEmailToken(dto.code(), EmailTokenMap.DELETE);
+				
 				User user = accountBaseService.selectByPK(userId);
 				
 				if (user == null) {
 						throw new BusinessException(ErrorMap.USER_NOT_FOUND);
+				}
+				
+				// code must belong to this user and the current email (re-request after email change)
+				if (!validToken.getUserId().equals(userId)
+								|| user.getEmail() == null
+								|| !user.getEmail().equals(validToken.getEmail())) {
+						throw new BusinessException(ErrorMap.INVALID_TOKEN);
 				}
 				
 				String username = user.getUsername();
@@ -136,7 +72,15 @@ public class AccountService {
 						throw new BusinessException(ErrorMap.DELETE_FAILED);
 				}
 				
-				actionCallback(userId, response);
+				boolean updateHashUsedAtSuccess = emailTokenBaseService.updateHashUsedAt(validToken.getTokenHash());
+				
+				if (!updateHashUsedAtSuccess) {
+						throw new BusinessException(ErrorMap.UPDATE_FAILED, "刪除帳戶出現了錯誤");
+				}
+				
+				myRedisTemplate.deleteAll(CacheKeys.allUserKeys(userId));
+				
+				authService.invalidateSession(userId, response);
 				
 				return BaseVo.success(null);
 		}
@@ -178,7 +122,7 @@ public class AccountService {
 						throw new BusinessException(ErrorMap.UPDATE_FAILED, "更新密碼失敗");
 				}
 				
-				actionCallback(userId, response);
+				authService.invalidateSession(userId, response);
 				
 				return BaseVo.success(null);
 		}
@@ -208,7 +152,7 @@ public class AccountService {
 								throw new BusinessException(ErrorMap.EMAIL_ALREADY_VERIFIED);
 						}
 						// same pending email → resend verification
-						sendVerifyTokenEmail(newEmail, userId, EmailTokenMap.VERIFY);
+						emailTokenService.sendVerifyTokenEmail(newEmail, userId, EmailTokenMap.VERIFY);
 						return BaseVo.success(pendingEmailVo(newEmail));
 				}
 				
@@ -224,7 +168,7 @@ public class AccountService {
 						throw new BusinessException(ErrorMap.UPDATE_FAILED, "更新電子郵箱失敗");
 				}
 				
-				sendVerifyTokenEmail(newEmail, userId, EmailTokenMap.VERIFY);
+				emailTokenService.sendVerifyTokenEmail(newEmail, userId, EmailTokenMap.VERIFY);
 				return BaseVo.success(pendingEmailVo(newEmail));
 		}
 		

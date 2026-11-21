@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.Collection;
 import java.util.concurrent.TimeUnit;
 
 @Slf4j
@@ -66,6 +67,15 @@ public class MyRedisTemplate {
 						log.debug("已清除缓存: {}", key);
 				}
 				return deleted;
+		}
+		
+		/**
+		 * 批量删除缓存
+		 */
+		public Long deleteAll(Collection<String> keys) {
+				Long count = redisTemplate.delete(keys);
+				log.debug("已清除的缓存數量: {}", count);
+				return count;
 		}
 		
 		/**

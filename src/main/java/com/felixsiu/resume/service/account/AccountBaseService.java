@@ -18,7 +18,7 @@ public class AccountBaseService extends ServiceImpl<UserMapper, User> {
 		public static final int ACCOUNT_PURGE_GRACE_DAYS = 30;
 		
 		/**
-		 * get user by id
+		 * get user by id & not soft deleted
 		 *
 		 * @param userId user id
 		 * @return user
@@ -26,11 +26,12 @@ public class AccountBaseService extends ServiceImpl<UserMapper, User> {
 		public User selectByPK(String userId) {
 				return this.getOne(new LambdaQueryWrapper<User>()
 								.eq(User::getId, userId)
+								.isNull(User::getDeletedAt)
 				);
 		}
 		
 		/**
-		 * get user (verified email & not soft deleted)
+		 * get user by verified email & not soft deleted
 		 *
 		 * @param email email
 		 * @return User

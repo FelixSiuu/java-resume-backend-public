@@ -1,5 +1,6 @@
 package com.felixsiu.resume.controller;
 
+import com.felixsiu.resume.annotation.StandardApiResponses;
 import com.felixsiu.resume.model.dto.*;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.model.vo.CoolDownVo;
@@ -102,5 +103,15 @@ public class AuthController {
 						@Parameter(hidden = true) HttpServletResponse response
 		) {
 				return authService.resetPassword(resetPasswordDto, response);
+		}
+		
+		@GetMapping("/delete-token")
+		@Operation(summary = "獲取刪除帳戶的驗證碼")
+		@StandardApiResponses
+		public BaseVo<CoolDownVo> getDeleteToken(
+						@Parameter(hidden = true)
+						@RequestAttribute("userId") String userId
+		) {
+				return authService.getDeleteToken(userId);
 		}
 }

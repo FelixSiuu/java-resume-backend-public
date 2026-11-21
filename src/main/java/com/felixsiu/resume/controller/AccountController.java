@@ -2,6 +2,7 @@ package com.felixsiu.resume.controller;
 
 import com.felixsiu.resume.annotation.StandardApiResponses;
 import com.felixsiu.resume.model.dto.ChangePasswordDto;
+import com.felixsiu.resume.model.dto.DeleteAccountDto;
 import com.felixsiu.resume.model.dto.EmailDto;
 import com.felixsiu.resume.model.vo.BaseVo;
 import com.felixsiu.resume.model.vo.EmailVo;
@@ -30,9 +31,10 @@ public class AccountController {
 		public BaseVo<Void> deleteAccount(
 						@Parameter(hidden = true)
 						@RequestAttribute("userId") String userId,
-						@Parameter(hidden = true) HttpServletResponse response
+						@Parameter(hidden = true) HttpServletResponse response,
+						@Valid @RequestBody DeleteAccountDto deleteAccountDto
 		) {
-				return accountService.deleteAccount(userId, response);
+				return accountService.deleteAccount(userId, response, deleteAccountDto);
 		}
 		
 		@PutMapping("/change-password")
@@ -54,7 +56,7 @@ public class AccountController {
 						@Parameter(hidden = true)
 						@RequestAttribute("userId") String userId,
 						@RequestBody @Valid EmailDto emailDto
-		){
+		) {
 				return accountService.updateEmail(userId, emailDto);
 		}
 		
@@ -64,7 +66,7 @@ public class AccountController {
 		public BaseVo<EmailVo> getEmail(
 						@Parameter(hidden = true)
 						@RequestAttribute("userId") String userId
-		){
+		) {
 				return accountService.queryEmailStatus(userId);
 		}
 }

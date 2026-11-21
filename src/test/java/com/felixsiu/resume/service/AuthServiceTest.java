@@ -14,6 +14,7 @@ import com.felixsiu.resume.model.vo.CoolDownVo;
 import com.felixsiu.resume.model.vo.LoginVo;
 import com.felixsiu.resume.repository.UserMapper;
 import com.felixsiu.resume.service.account.AccountBaseService;
+import com.felixsiu.resume.service.emailtoken.EmailTokenBaseService;
 import com.felixsiu.resume.utils.CacheKeys;
 import com.felixsiu.resume.utils.JwtUtil;
 import com.felixsiu.resume.utils.MyRedisTemplate;
@@ -68,13 +69,13 @@ class AuthServiceTest {
 		@Mock
 		private CookieService cookieService;
 		@Mock
-		private EmailTokenService emailTokenService;
-		@Mock
 		private AccountBaseService accountBaseService;
 		@Mock
-		private AccountService accountService;
-		@Mock
 		private MyRedisTemplate myRedisTemplate;
+		@Mock
+		private EmailTokenBaseService emailTokenBaseService;
+		@Mock
+		private EmailTokenService emailTokenService;
 		@InjectMocks
 		private AuthService authService;
 		
@@ -82,6 +83,7 @@ class AuthServiceTest {
 		private final String purposeVerify = EmailTokenMap.VERIFY.getName();
 		private final EmailTokenMap purposeReset = EmailTokenMap.RESET;
 		private final String purposeResetName = EmailTokenMap.RESET.getName();
+		private final EmailTokenMap purposeDelete = EmailTokenMap.DELETE;
 		
 		// ============================================================
 		// 測試數據工廠
@@ -170,7 +172,7 @@ class AuthServiceTest {
 				assertThat(captured.getPassword()).isEqualTo(encodedPassword);
 				assertThat(captured.getEmail()).isEqualTo("felix@example.com");
 				assertThat(captured.getEmailVerifiedAt()).isNull();
-				verify(accountService).sendVerifyTokenEmail("felix@example.com", userId, purposeVerifyEmail);
+				verify(emailTokenService).sendVerifyTokenEmail("felix@example.com", userId, purposeVerifyEmail);
 		}
 		
 		@Test
@@ -186,7 +188,7 @@ class AuthServiceTest {
 				verify(userMapper, never()).exists(any(LambdaQueryWrapper.class));
 				verify(userMapper, never()).insert(any(User.class));
 				verify(passwordEncoder, never()).encode(anyString());
-				verify(accountService, never()).sendVerifyTokenEmail(anyString(), anyString(), any(EmailTokenMap.class));
+				verify(emailTokenService, never()).sendVerifyTokenEmail(anyString(), anyString(), any(EmailTokenMap.class));
 		}
 		
 		@Test
@@ -202,7 +204,7 @@ class AuthServiceTest {
 				
 				verify(userMapper, never()).insert(any(User.class));
 				verify(passwordEncoder, never()).encode(anyString());
-				verify(accountService, never()).sendVerifyTokenEmail(anyString(), anyString(), any(EmailTokenMap.class));
+				verify(emailTokenService, never()).sendVerifyTokenEmail(anyString(), anyString(), any(EmailTokenMap.class));
 		}
 		
 		@Test
@@ -218,7 +220,7 @@ class AuthServiceTest {
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("創建帳號失敗");
 				
-				verify(accountService, never()).sendVerifyTokenEmail(anyString(), anyString(), any(EmailTokenMap.class));
+				verify(emailTokenService, never()).sendVerifyTokenEmail(anyString(), anyString(), any(EmailTokenMap.class));
 		}
 		
 		@Test
@@ -234,7 +236,7 @@ class AuthServiceTest {
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("創建帳號失敗");
 				
-				verify(accountService, never()).sendVerifyTokenEmail(anyString(), anyString(), any(EmailTokenMap.class));
+				verify(emailTokenService, never()).sendVerifyTokenEmail(anyString(), anyString(), any(EmailTokenMap.class));
 		}
 		
 		// ============================================================
@@ -758,39 +760,44 @@ class AuthServiceTest {
 				User user = createUser(userId, "felix", "encoded");
 				user.setEmail(email);
 				
-				when(emailTokenService.findByValidHash(tokenHash, purposeVerify)).thenReturn(token);
+				when(emailTokenService.findValidEmailToken(rawToken, purposeVerifyEmail)).thenReturn(token);
 				when(accountBaseService.selectByPK(userId)).thenReturn(user);
-				when(emailTokenService.updateHashUsedAt(tokenHash)).thenReturn(true);
+				when(emailTokenBaseService.updateHashUsedAt(tokenHash)).thenReturn(true);
 				when(accountBaseService.updateEmailByPK(eq(userId), eq(email), any(LocalDateTime.class))).thenReturn(true);
 				
 				BaseVo<Void> result = authService.verifyEmail(new ValidateEmailTokenDto(rawToken));
 				
 				assertThat(result.getIsSuccess()).isTrue();
-				verify(emailTokenService).updateHashUsedAt(tokenHash);
+				verify(emailTokenBaseService).updateHashUsedAt(tokenHash);
 				verify(accountBaseService).updateEmailByPK(eq(userId), eq(email), any(LocalDateTime.class));
 		}
 		
 		@Test
 		void verifyEmail_shouldThrow_whenTokenBlank() {
+				when(emailTokenService.findValidEmailToken("  ", purposeVerifyEmail))
+								.thenThrow(new BusinessException(ErrorMap.TOKEN_EMPTY));
+				
 				assertThatThrownBy(() -> authService.verifyEmail(new ValidateEmailTokenDto("  ")))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("token不能為空");
 				
-				verify(emailTokenService, never()).findByValidHash(anyString(), anyString());
+				verify(emailTokenService).findValidEmailToken("  ", purposeVerifyEmail);
+				verify(accountBaseService, never()).selectByPK(anyString());
+				verify(emailTokenBaseService, never()).updateHashUsedAt(anyString());
 		}
 		
 		@Test
-		void verifyEmail_shouldThrow_whenTokenInvalidOrExpired() throws NoSuchAlgorithmException {
+		void verifyEmail_shouldThrow_whenTokenInvalidOrExpired() {
 				String rawToken = "bad-or-expired";
-				String tokenHash = Sha256Hex.toHexString(rawToken);
-				when(emailTokenService.findByValidHash(tokenHash, purposeVerify)).thenReturn(null);
+				when(emailTokenService.findValidEmailToken(rawToken, purposeVerifyEmail))
+								.thenThrow(new BusinessException(ErrorMap.INVALID_TOKEN));
 				
 				assertThatThrownBy(() -> authService.verifyEmail(new ValidateEmailTokenDto(rawToken)))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("token 無效或已失效");
 				
 				verify(accountBaseService, never()).selectByPK(anyString());
-				verify(emailTokenService, never()).updateHashUsedAt(anyString());
+				verify(emailTokenBaseService, never()).updateHashUsedAt(anyString());
 		}
 		
 		@Test
@@ -805,14 +812,14 @@ class AuthServiceTest {
 				token.setUserId(userId);
 				token.setEmail(email);
 				
-				when(emailTokenService.findByValidHash(tokenHash, purposeVerify)).thenReturn(token);
+				when(emailTokenService.findValidEmailToken(rawToken, purposeVerifyEmail)).thenReturn(token);
 				when(accountBaseService.selectByPK(userId)).thenReturn(null);
 				
 				assertThatThrownBy(() -> authService.verifyEmail(new ValidateEmailTokenDto(rawToken)))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("token 無效或已失效");
 				
-				verify(emailTokenService, never()).updateHashUsedAt(anyString());
+				verify(emailTokenBaseService, never()).updateHashUsedAt(anyString());
 				verify(accountBaseService, never()).updateEmailByPK(anyString(), anyString(), any());
 		}
 		
@@ -830,14 +837,14 @@ class AuthServiceTest {
 				User user = createUser(userId, "felix", "encoded");
 				user.setEmail("new@example.com");
 				
-				when(emailTokenService.findByValidHash(tokenHash, purposeVerify)).thenReturn(token);
+				when(emailTokenService.findValidEmailToken(rawToken, purposeVerifyEmail)).thenReturn(token);
 				when(accountBaseService.selectByPK(userId)).thenReturn(user);
 				
 				assertThatThrownBy(() -> authService.verifyEmail(new ValidateEmailTokenDto(rawToken)))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("token 無效或已失效");
 				
-				verify(emailTokenService, never()).updateHashUsedAt(anyString());
+				verify(emailTokenBaseService, never()).updateHashUsedAt(anyString());
 				verify(accountBaseService, never()).updateEmailByPK(anyString(), anyString(), any());
 		}
 		
@@ -855,14 +862,14 @@ class AuthServiceTest {
 				User user = createUser(userId, "felix", "encoded");
 				user.setEmail(null);
 				
-				when(emailTokenService.findByValidHash(tokenHash, purposeVerify)).thenReturn(token);
+				when(emailTokenService.findValidEmailToken(rawToken, purposeVerifyEmail)).thenReturn(token);
 				when(accountBaseService.selectByPK(userId)).thenReturn(user);
 				
 				assertThatThrownBy(() -> authService.verifyEmail(new ValidateEmailTokenDto(rawToken)))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("token 無效或已失效");
 				
-				verify(emailTokenService, never()).updateHashUsedAt(anyString());
+				verify(emailTokenBaseService, never()).updateHashUsedAt(anyString());
 		}
 		
 		@Test
@@ -880,9 +887,9 @@ class AuthServiceTest {
 				User user = createUser(userId, "felix", "encoded");
 				user.setEmail(email);
 				
-				when(emailTokenService.findByValidHash(tokenHash, purposeVerify)).thenReturn(token);
+				when(emailTokenService.findValidEmailToken(rawToken, purposeVerifyEmail)).thenReturn(token);
 				when(accountBaseService.selectByPK(userId)).thenReturn(user);
-				when(emailTokenService.updateHashUsedAt(tokenHash)).thenReturn(false);
+				when(emailTokenBaseService.updateHashUsedAt(tokenHash)).thenReturn(false);
 				
 				assertThatThrownBy(() -> authService.verifyEmail(new ValidateEmailTokenDto(rawToken)))
 								.isInstanceOf(RuntimeException.class)
@@ -906,9 +913,9 @@ class AuthServiceTest {
 				User user = createUser(userId, "felix", "encoded");
 				user.setEmail(email);
 				
-				when(emailTokenService.findByValidHash(tokenHash, purposeVerify)).thenReturn(token);
+				when(emailTokenService.findValidEmailToken(rawToken, purposeVerifyEmail)).thenReturn(token);
 				when(accountBaseService.selectByPK(userId)).thenReturn(user);
-				when(emailTokenService.updateHashUsedAt(tokenHash)).thenReturn(true);
+				when(emailTokenBaseService.updateHashUsedAt(tokenHash)).thenReturn(true);
 				when(accountBaseService.updateEmailByPK(eq(userId), eq(email), any(LocalDateTime.class))).thenReturn(false);
 				
 				assertThatThrownBy(() -> authService.verifyEmail(new ValidateEmailTokenDto(rawToken)))
@@ -933,7 +940,7 @@ class AuthServiceTest {
 				
 				verify(myRedisTemplate, never()).getExpire(anyString(), any());
 				verify(accountBaseService, never()).selectByVerifiedEmail(anyString());
-				verify(accountService, never()).sendVerifyTokenEmail(anyString(), anyString(), any());
+				verify(emailTokenService, never()).sendVerifyTokenEmail(anyString(), anyString(), any());
 				verify(myRedisTemplate, never()).set(anyString(), any(), anyLong(), any());
 		}
 		
@@ -949,7 +956,7 @@ class AuthServiceTest {
 								.hasMessageContaining("captcha 錯誤");
 				
 				verify(myRedisTemplate, never()).getExpire(anyString(), any());
-				verify(accountService, never()).sendVerifyTokenEmail(anyString(), anyString(), any());
+				verify(emailTokenService, never()).sendVerifyTokenEmail(anyString(), anyString(), any());
 		}
 		
 		@Test
@@ -974,7 +981,7 @@ class AuthServiceTest {
 								});
 				
 				verify(accountBaseService, never()).selectByVerifiedEmail(anyString());
-				verify(accountService, never()).sendVerifyTokenEmail(anyString(), anyString(), any());
+				verify(emailTokenService, never()).sendVerifyTokenEmail(anyString(), anyString(), any());
 				verify(myRedisTemplate, never()).set(anyString(), any(), anyLong(), any());
 		}
 		
@@ -1001,7 +1008,7 @@ class AuthServiceTest {
 				assertThat(result.getMessage()).contains("password reset link");
 				assertThat(result.getData().getCd()).isEqualTo(60L);
 				
-				verify(accountService).sendVerifyTokenEmail(email, userId, purposeReset);
+				verify(emailTokenService).sendVerifyTokenEmail(email, userId, purposeReset);
 				verify(myRedisTemplate).set(cacheKey, "1", 60L, TimeUnit.SECONDS);
 		}
 		
@@ -1022,7 +1029,7 @@ class AuthServiceTest {
 				assertThat(result.getIsSuccess()).isTrue();
 				assertThat(result.getData().getCd()).isEqualTo(60L);
 				
-				verify(accountService, never()).sendVerifyTokenEmail(anyString(), anyString(), any());
+				verify(emailTokenService, never()).sendVerifyTokenEmail(anyString(), anyString(), any());
 				verify(myRedisTemplate).set(cacheKey, "1", 60L, TimeUnit.SECONDS);
 		}
 		
@@ -1069,12 +1076,13 @@ class AuthServiceTest {
 				User user = createUser(userId, "felix", encodedOld);
 				user.setEmail(email);
 				
-				when(emailTokenService.findByValidHash(tokenHash, purposeResetName)).thenReturn(token);
+				when(emailTokenService.findValidEmailToken(rawToken, purposeReset)).thenReturn(token);
 				when(accountBaseService.selectByPK(userId)).thenReturn(user);
 				when(passwordEncoder.encode(rawPassword)).thenReturn(encodedNew);
 				when(passwordEncoder.matches(rawPassword, encodedOld)).thenReturn(false);
 				when(accountBaseService.updatePasswordByPK(userId, encodedNew)).thenReturn(true);
-				when(emailTokenService.updateHashUsedAt(tokenHash)).thenReturn(true);
+				when(emailTokenBaseService.updateHashUsedAt(tokenHash)).thenReturn(true);
+				when(refreshTokenService.revokeAllByUserId(userId)).thenReturn(1);
 				
 				BaseVo<Void> result = authService.resetPassword(
 								new ResetPasswordDto(rawToken, rawPassword),
@@ -1083,14 +1091,18 @@ class AuthServiceTest {
 				
 				assertThat(result.getIsSuccess()).isTrue();
 				
-				InOrder inOrder = inOrder(accountBaseService, emailTokenService, accountService);
+				InOrder inOrder = inOrder(accountBaseService, emailTokenBaseService, cookieService, refreshTokenService);
 				inOrder.verify(accountBaseService).updatePasswordByPK(userId, encodedNew);
-				inOrder.verify(emailTokenService).updateHashUsedAt(tokenHash);
-				inOrder.verify(accountService).actionCallback(userId, httpServletResponse);
+				inOrder.verify(emailTokenBaseService).updateHashUsedAt(tokenHash);
+				inOrder.verify(cookieService).clearTokenCookies(httpServletResponse);
+				inOrder.verify(refreshTokenService).revokeAllByUserId(userId);
 		}
 		
 		@Test
 		void resetPassword_shouldThrow_whenTokenBlank() {
+				when(emailTokenService.findValidEmailToken("  ", purposeReset))
+								.thenThrow(new BusinessException(ErrorMap.TOKEN_EMPTY));
+				
 				assertThatThrownBy(() -> authService.resetPassword(
 								new ResetPasswordDto("  ", "newPass123"),
 								httpServletResponse
@@ -1098,16 +1110,16 @@ class AuthServiceTest {
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("token不能為空");
 				
-				verify(emailTokenService, never()).findByValidHash(anyString(), anyString());
-				verify(accountService, never()).actionCallback(anyString(), any());
+				verify(emailTokenService).findValidEmailToken("  ", purposeReset);
+				verify(cookieService, never()).clearTokenCookies(any());
+				verify(refreshTokenService, never()).revokeAllByUserId(anyString());
 		}
 		
 		@Test
-		void resetPassword_shouldThrow_whenTokenInvalidOrExpired() throws NoSuchAlgorithmException {
+		void resetPassword_shouldThrow_whenTokenInvalidOrExpired() {
 				String rawToken = "bad-or-expired";
-				String tokenHash = Sha256Hex.toHexString(rawToken);
-				
-				when(emailTokenService.findByValidHash(tokenHash, purposeResetName)).thenReturn(null);
+				when(emailTokenService.findValidEmailToken(rawToken, purposeReset))
+								.thenThrow(new BusinessException(ErrorMap.INVALID_TOKEN));
 				
 				assertThatThrownBy(() -> authService.resetPassword(
 								new ResetPasswordDto(rawToken, "newPass123"),
@@ -1118,8 +1130,9 @@ class AuthServiceTest {
 				
 				verify(accountBaseService, never()).selectByPK(anyString());
 				verify(accountBaseService, never()).updatePasswordByPK(anyString(), anyString());
-				verify(emailTokenService, never()).updateHashUsedAt(anyString());
-				verify(accountService, never()).actionCallback(anyString(), any());
+				verify(emailTokenBaseService, never()).updateHashUsedAt(anyString());
+				verify(cookieService, never()).clearTokenCookies(any());
+				verify(refreshTokenService, never()).revokeAllByUserId(anyString());
 		}
 		
 		@Test
@@ -1133,7 +1146,7 @@ class AuthServiceTest {
 				token.setUserId(userId);
 				token.setEmail("felix@example.com");
 				
-				when(emailTokenService.findByValidHash(tokenHash, purposeResetName)).thenReturn(token);
+				when(emailTokenService.findValidEmailToken(rawToken, purposeReset)).thenReturn(token);
 				when(accountBaseService.selectByPK(userId)).thenReturn(null);
 				
 				assertThatThrownBy(() -> authService.resetPassword(
@@ -1144,8 +1157,9 @@ class AuthServiceTest {
 								.hasMessageContaining("token 無效或已失效");
 				
 				verify(accountBaseService, never()).updatePasswordByPK(anyString(), anyString());
-				verify(emailTokenService, never()).updateHashUsedAt(anyString());
-				verify(accountService, never()).actionCallback(anyString(), any());
+				verify(emailTokenBaseService, never()).updateHashUsedAt(anyString());
+				verify(cookieService, never()).clearTokenCookies(any());
+				verify(refreshTokenService, never()).revokeAllByUserId(anyString());
 		}
 		
 		@Test
@@ -1162,7 +1176,7 @@ class AuthServiceTest {
 				
 				User user = createUser(userId, "felix", encodedOld);
 				
-				when(emailTokenService.findByValidHash(tokenHash, purposeResetName)).thenReturn(token);
+				when(emailTokenService.findValidEmailToken(rawToken, purposeReset)).thenReturn(token);
 				when(accountBaseService.selectByPK(userId)).thenReturn(user);
 				when(passwordEncoder.matches(rawPassword, encodedOld)).thenReturn(true);
 				
@@ -1175,8 +1189,9 @@ class AuthServiceTest {
 				
 				verify(passwordEncoder, never()).encode(anyString());
 				verify(accountBaseService, never()).updatePasswordByPK(anyString(), anyString());
-				verify(emailTokenService, never()).updateHashUsedAt(anyString());
-				verify(accountService, never()).actionCallback(anyString(), any());
+				verify(emailTokenBaseService, never()).updateHashUsedAt(anyString());
+				verify(cookieService, never()).clearTokenCookies(any());
+				verify(refreshTokenService, never()).revokeAllByUserId(anyString());
 		}
 		
 		@Test
@@ -1194,7 +1209,7 @@ class AuthServiceTest {
 				
 				User user = createUser(userId, "felix", encodedOld);
 				
-				when(emailTokenService.findByValidHash(tokenHash, purposeResetName)).thenReturn(token);
+				when(emailTokenService.findValidEmailToken(rawToken, purposeReset)).thenReturn(token);
 				when(accountBaseService.selectByPK(userId)).thenReturn(user);
 				when(passwordEncoder.encode(rawPassword)).thenReturn(encodedNew);
 				when(passwordEncoder.matches(rawPassword, encodedOld)).thenReturn(false);
@@ -1207,8 +1222,9 @@ class AuthServiceTest {
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("更新密碼出現了錯誤");
 				
-				verify(emailTokenService, never()).updateHashUsedAt(anyString());
-				verify(accountService, never()).actionCallback(anyString(), any());
+				verify(emailTokenBaseService, never()).updateHashUsedAt(anyString());
+				verify(cookieService, never()).clearTokenCookies(any());
+				verify(refreshTokenService, never()).revokeAllByUserId(anyString());
 		}
 		
 		@Test
@@ -1226,12 +1242,12 @@ class AuthServiceTest {
 				
 				User user = createUser(userId, "felix", encodedOld);
 				
-				when(emailTokenService.findByValidHash(tokenHash, purposeResetName)).thenReturn(token);
+				when(emailTokenService.findValidEmailToken(rawToken, purposeReset)).thenReturn(token);
 				when(accountBaseService.selectByPK(userId)).thenReturn(user);
 				when(passwordEncoder.encode(rawPassword)).thenReturn(encodedNew);
 				when(passwordEncoder.matches(rawPassword, encodedOld)).thenReturn(false);
 				when(accountBaseService.updatePasswordByPK(userId, encodedNew)).thenReturn(true);
-				when(emailTokenService.updateHashUsedAt(tokenHash)).thenReturn(false);
+				when(emailTokenBaseService.updateHashUsedAt(tokenHash)).thenReturn(false);
 				
 				assertThatThrownBy(() -> authService.resetPassword(
 								new ResetPasswordDto(rawToken, rawPassword),
@@ -1240,34 +1256,8 @@ class AuthServiceTest {
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("更新密碼出現了錯誤");
 				
-				verify(accountService, never()).actionCallback(anyString(), any());
-		}
-		
-		@Test
-		void resetPassword_shouldThrow_whenUserSoftDeleted() throws NoSuchAlgorithmException {
-				String userId = "uuid-123";
-				String rawToken = "raw-reset-token";
-				String tokenHash = Sha256Hex.toHexString(rawToken);
-				
-				EmailToken token = new EmailToken();
-				token.setTokenHash(tokenHash);
-				token.setUserId(userId);
-				
-				User deletedUser = createUser(userId, "felix", "encoded-old", LocalDateTime.now().minusDays(1));
-				
-				when(emailTokenService.findByValidHash(tokenHash, purposeResetName)).thenReturn(token);
-				when(accountBaseService.selectByPK(userId)).thenReturn(deletedUser);
-				
-				assertThatThrownBy(() -> authService.resetPassword(
-								new ResetPasswordDto(rawToken, "newPass123"),
-								httpServletResponse
-				))
-								.isInstanceOf(RuntimeException.class)
-								.hasMessageContaining("token 無效或已失效");
-				
-				verify(passwordEncoder, never()).encode(anyString());
-				verify(accountBaseService, never()).updatePasswordByPK(anyString(), anyString());
-				verify(accountService, never()).actionCallback(anyString(), any());
+				verify(cookieService, never()).clearTokenCookies(any());
+				verify(refreshTokenService, never()).revokeAllByUserId(anyString());
 		}
 		
 		// ============================================================
@@ -1287,40 +1277,43 @@ class AuthServiceTest {
 				
 				User user = createUser(userId, "felix", "encoded");
 				
-				when(emailTokenService.findByValidHash(tokenHash, purposeResetName)).thenReturn(token);
+				when(emailTokenService.findValidEmailToken(rawToken, purposeReset)).thenReturn(token);
 				when(accountBaseService.selectByPK(userId)).thenReturn(user);
 				
 				BaseVo<Void> result = authService.validateResetToken(new ValidateEmailTokenDto(rawToken));
 				
 				assertThat(result.getIsSuccess()).isTrue();
-				verify(emailTokenService, never()).updateHashUsedAt(anyString());
+				verify(emailTokenBaseService, never()).updateHashUsedAt(anyString());
 				verify(accountBaseService, never()).updatePasswordByPK(anyString(), anyString());
-				verify(accountService, never()).actionCallback(anyString(), any());
+				verify(cookieService, never()).clearTokenCookies(any());
+				verify(refreshTokenService, never()).revokeAllByUserId(anyString());
 		}
 		
 		@Test
 		void validateResetToken_shouldThrow_whenTokenBlank() {
+				when(emailTokenService.findValidEmailToken("  ", purposeReset))
+								.thenThrow(new BusinessException(ErrorMap.TOKEN_EMPTY));
+				
 				assertThatThrownBy(() -> authService.validateResetToken(new ValidateEmailTokenDto("  ")))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("token不能為空");
 				
-				verify(emailTokenService, never()).findByValidHash(anyString(), anyString());
+				verify(emailTokenService).findValidEmailToken("  ", purposeReset);
 				verify(accountBaseService, never()).selectByPK(anyString());
 		}
 		
 		@Test
-		void validateResetToken_shouldThrow_whenTokenInvalidOrExpired() throws NoSuchAlgorithmException {
+		void validateResetToken_shouldThrow_whenTokenInvalidOrExpired() {
 				String rawToken = "bad-or-expired";
-				String tokenHash = Sha256Hex.toHexString(rawToken);
-				
-				when(emailTokenService.findByValidHash(tokenHash, purposeResetName)).thenReturn(null);
+				when(emailTokenService.findValidEmailToken(rawToken, purposeReset))
+								.thenThrow(new BusinessException(ErrorMap.INVALID_TOKEN));
 				
 				assertThatThrownBy(() -> authService.validateResetToken(new ValidateEmailTokenDto(rawToken)))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("token 無效或已失效");
 				
 				verify(accountBaseService, never()).selectByPK(anyString());
-				verify(emailTokenService, never()).updateHashUsedAt(anyString());
+				verify(emailTokenBaseService, never()).updateHashUsedAt(anyString());
 		}
 		
 		@Test
@@ -1333,35 +1326,146 @@ class AuthServiceTest {
 				token.setTokenHash(tokenHash);
 				token.setUserId(userId);
 				
-				when(emailTokenService.findByValidHash(tokenHash, purposeResetName)).thenReturn(token);
+				when(emailTokenService.findValidEmailToken(rawToken, purposeReset)).thenReturn(token);
 				when(accountBaseService.selectByPK(userId)).thenReturn(null);
 				
 				assertThatThrownBy(() -> authService.validateResetToken(new ValidateEmailTokenDto(rawToken)))
 								.isInstanceOf(RuntimeException.class)
 								.hasMessageContaining("token 無效或已失效");
 				
-				verify(emailTokenService, never()).updateHashUsedAt(anyString());
+				verify(emailTokenBaseService, never()).updateHashUsedAt(anyString());
+		}
+		
+		// ============================================================
+		// getDeleteToken
+		// ============================================================
+		
+		@Test
+		void getDeleteToken_shouldSendDeleteCode_whenVerifiedEmailExists() {
+				String userId = "uuid-123";
+				String email = "felix@example.com";
+				String cacheKey = CacheKeys.deleteToken(userId);
+				
+				User user = createUser(userId, "felix", "encoded");
+				user.setEmail(email);
+				user.setEmailVerifiedAt(LocalDateTime.now().minusDays(1));
+				
+				when(myRedisTemplate.getExpire(cacheKey, TimeUnit.SECONDS)).thenReturn(-2L);
+				when(accountBaseService.selectByPK(userId)).thenReturn(user);
+				
+				BaseVo<CoolDownVo> result = authService.getDeleteToken(userId);
+				
+				assertThat(result.getIsSuccess()).isTrue();
+				assertThat(result.getData().getCd()).isEqualTo(60L);
+				assertThat(result.getMessage()).contains("confirmation code");
+				
+				verify(emailTokenService).sendVerifyTokenEmail(email, userId, purposeDelete);
+				verify(myRedisTemplate).set(cacheKey, "1", 60L, TimeUnit.SECONDS);
 		}
 		
 		@Test
-		void validateResetToken_shouldThrow_whenUserSoftDeleted() throws NoSuchAlgorithmException {
+		void getDeleteToken_shouldThrow_whenCooldownActive() {
 				String userId = "uuid-123";
-				String rawToken = "raw-reset-token";
-				String tokenHash = Sha256Hex.toHexString(rawToken);
+				String cacheKey = CacheKeys.deleteToken(userId);
 				
-				EmailToken token = new EmailToken();
-				token.setTokenHash(tokenHash);
-				token.setUserId(userId);
+				when(myRedisTemplate.getExpire(cacheKey, TimeUnit.SECONDS)).thenReturn(42L);
 				
-				User deletedUser = createUser(userId, "felix", "encoded", LocalDateTime.now().minusDays(1));
+				assertThatThrownBy(() -> authService.getDeleteToken(userId))
+								.isInstanceOf(BusinessException.class)
+								.satisfies(ex -> {
+										BusinessException be = (BusinessException) ex;
+										assertThat(be.getCode()).isEqualTo(ErrorMap.RATE_LIMITED.getCode());
+										assertThat(be.getMessage()).contains("Too many requests");
+										assertThat(be.getData()).isInstanceOf(CoolDownVo.class);
+										assertThat(((CoolDownVo) be.getData()).getCd()).isEqualTo(42L);
+								});
 				
-				when(emailTokenService.findByValidHash(tokenHash, purposeResetName)).thenReturn(token);
-				when(accountBaseService.selectByPK(userId)).thenReturn(deletedUser);
+				verify(accountBaseService, never()).selectByPK(anyString());
+				verify(emailTokenService, never()).sendVerifyTokenEmail(anyString(), anyString(), any());
+				verify(myRedisTemplate, never()).set(anyString(), any(), anyLong(), any());
+		}
+		
+		@Test
+		void getDeleteToken_shouldThrow_whenUserNotFound() {
+				String userId = "missing";
+				String cacheKey = CacheKeys.deleteToken(userId);
 				
-				assertThatThrownBy(() -> authService.validateResetToken(new ValidateEmailTokenDto(rawToken)))
+				when(myRedisTemplate.getExpire(cacheKey, TimeUnit.SECONDS)).thenReturn(null);
+				when(accountBaseService.selectByPK(userId)).thenReturn(null);
+				
+				assertThatThrownBy(() -> authService.getDeleteToken(userId))
 								.isInstanceOf(RuntimeException.class)
-								.hasMessageContaining("token 無效或已失效");
+								.hasMessageContaining("找不到該用戶");
 				
-				verify(emailTokenService, never()).updateHashUsedAt(anyString());
+				verify(emailTokenService, never()).sendVerifyTokenEmail(anyString(), anyString(), any());
+				verify(myRedisTemplate, never()).set(anyString(), any(), anyLong(), any());
+		}
+		
+		@Test
+		void getDeleteToken_shouldThrow_whenEmailMissing() {
+				String userId = "uuid-123";
+				String cacheKey = CacheKeys.deleteToken(userId);
+				
+				User user = createUser(userId, "felix", "encoded");
+				user.setEmail(null);
+				user.setEmailVerifiedAt(null);
+				
+				when(myRedisTemplate.getExpire(cacheKey, TimeUnit.SECONDS)).thenReturn(-2L);
+				when(accountBaseService.selectByPK(userId)).thenReturn(user);
+				
+				assertThatThrownBy(() -> authService.getDeleteToken(userId))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("請先綁定電子郵箱");
+				
+				verify(emailTokenService, never()).sendVerifyTokenEmail(anyString(), anyString(), any());
+				verify(myRedisTemplate, never()).set(anyString(), any(), anyLong(), any());
+		}
+		
+		@Test
+		void getDeleteToken_shouldThrow_whenEmailNotVerified() {
+				String userId = "uuid-123";
+				String email = "pending@example.com";
+				String cacheKey = CacheKeys.deleteToken(userId);
+				
+				User user = createUser(userId, "felix", "encoded");
+				user.setEmail(email);
+				user.setEmailVerifiedAt(null);
+				
+				when(myRedisTemplate.getExpire(cacheKey, TimeUnit.SECONDS)).thenReturn(null);
+				when(accountBaseService.selectByPK(userId)).thenReturn(user);
+				
+				assertThatThrownBy(() -> authService.getDeleteToken(userId))
+								.isInstanceOf(RuntimeException.class)
+								.hasMessageContaining("未驗證");
+				
+				verify(emailTokenService, never()).sendVerifyTokenEmail(anyString(), anyString(), any());
+				verify(myRedisTemplate, never()).set(anyString(), any(), anyLong(), any());
+		}
+		
+		// ============================================================
+		// invalidateSession
+		// ============================================================
+		
+		@Test
+		void invalidateSession_shouldClearCookiesAndRevokeAllRefreshTokens() {
+				String userId = "uuid-123";
+				when(refreshTokenService.revokeAllByUserId(userId)).thenReturn(2);
+				
+				authService.invalidateSession(userId, httpServletResponse);
+				
+				InOrder inOrder = inOrder(cookieService, refreshTokenService);
+				inOrder.verify(cookieService).clearTokenCookies(httpServletResponse);
+				inOrder.verify(refreshTokenService).revokeAllByUserId(userId);
+		}
+		
+		@Test
+		void invalidateSession_shouldStillClearCookies_whenRevokeReturnsZero() {
+				String userId = "uuid-123";
+				when(refreshTokenService.revokeAllByUserId(userId)).thenReturn(0);
+				
+				authService.invalidateSession(userId, httpServletResponse);
+				
+				verify(cookieService).clearTokenCookies(httpServletResponse);
+				verify(refreshTokenService).revokeAllByUserId(userId);
 		}
 }

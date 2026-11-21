@@ -56,11 +56,10 @@ spring:
 logging:
   level:
     com.felixsiu.resume: DEBUG
-    com.felixsiu.resume.respository: DEBUG
-mybatis:
-  configuration:
-    map-underscore-to-camel-case: true #  開啟 MyBatis 駝峰命名自動轉換
+    com.felixsiu.resume.repository: DEBUG
 mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true # 開啟駝峰命名自動轉換
   mapper-locations: classpath:mapper/**/*.xml
 springdoc:
   api-docs:
